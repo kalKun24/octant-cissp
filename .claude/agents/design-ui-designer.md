@@ -13,9 +13,11 @@ tools: Bash, Read, ToolSearch
 ## 前提（このプロジェクトの実態）
 
 - スタイルは **Tailwind CSS + shadcn/ui**。global.css / CSS Modules / styled-components は使わない
-- 色・間隔・角丸は **`tailwind.config` のテーマトークン**が正。**任意値記法（`bg-[#3b82f6]`）を提案しない**。
+- Tailwind は **v4**。**`tailwind.config` は存在しない。** テーマトークンの正は
+  **`frontend/src/index.css`**（`:root` と `.dark` の CSS 変数を `@theme inline` で結びつけている）
+- 色・間隔・角丸はこのテーマトークンが正。**任意値記法（`bg-[#3b82f6]`）を提案しない**。
   新しい色が要るならトークンとして定義する形で提案する
-- コンポーネントは `frontend/src/components/`。**提案前に必ず `tailwind.config`・
+- コンポーネントは `frontend/src/components/`。**提案前に必ず `frontend/src/index.css`・
   導入済みの shadcn プリミティブ・主要コンポーネントを読み、現状の流儀を把握してから差分を提案する**
 - **shadcn/ui に既存のプリミティブがあるものは、それを使う前提で提案する**（自作を勧めない）
 - **ダークテーマとライトテーマの両方**で成立させる必要がある
@@ -35,7 +37,8 @@ tools: Bash, Read, ToolSearch
    **モバイルを起点に記述する**
 5. **アクセシビリティ**: WCAG AA のコントラスト比（**数値で示す。ライト / ダーク両方**）・
    フォーカスインジケーター仕様・**タップ領域44px以上**の担保方法・`prefers-reduced-motion` 対応
-6. **実装ガイド**: `tailwind.config` に追加するトークン、使用する shadcn プリミティブ名、
+6. **実装ガイド**: `frontend/src/index.css` に追加するトークン（`:root` と `.dark` の
+   CSS 変数、および `@theme inline` の対応行）、使用する shadcn プリミティブ名、
    対象コンポーネントへのクラス適用方針
 
 ## 出力形式

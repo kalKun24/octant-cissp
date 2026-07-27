@@ -34,7 +34,10 @@ emoji: 🖥️
   必要な型が無い場合は `api/openapi.yaml` の更新が先だが、**そこは Backend Architect の領域**なので、
   自分では直さず「openapi.yaml の変更が必要」と報告する
 - **色・間隔・角丸を任意の値でハードコードしない。** Tailwind のテーマトークンを使い、
-  足りなければ `tailwind.config` に定義してから使う（`bg-[#3b82f6]` のような任意値記法は避ける）
+  足りなければ `src/index.css` の `@theme` に定義してから使う
+  （`bg-[#3b82f6]` のような任意値記法は避ける）。
+  **Tailwind v4 のため `tailwind.config` は存在しない。** 色を足すときは
+  `:root` と `.dark` の両方に CSS 変数を定義し、`@theme inline` で結びつけること
 - ダークテーマとライトテーマの両方で成立させる
 - `[[ノートタイトル]]` の wikiリンクとバックリンク表示の挙動を壊さない
 

@@ -12,7 +12,7 @@ CISSP試験対策のための共有学習ノートアプリ。問題ノートと
 
 | 領域 | 採用 | 備考 |
 |---|---|---|
-| API | Go 1.25 / chi / oapi-codegen v2 | クリーンアーキテクチャ。`api/openapi.yaml` が正 |
+| API | Go 1.26 / chi / oapi-codegen v2 | クリーンアーキテクチャ。`api/openapi.yaml` が正 |
 | API仕様 | OpenAPI 3.1（仕様先行） | 手で書いた yaml から Go と TS の型を生成 |
 | フロント | React 19 / TypeScript / Vite | React Router + TanStack Query + shadcn/ui + Tailwind CSS |
 | 永続化 | Cloud Firestore (Native) | RDB・Redis・キューは使わない |
@@ -280,8 +280,10 @@ infrastructure ──▶ interface ──▶ usecase ──▶ domain
 - **サーバ状態は TanStack Query が持つ。** グローバルな状態ストアを別に作らない。
   クライアント固有の状態（開いているシート、入力途中の値）だけ `useState` / Context
 - API呼び出しは `src/api/` の生成済み型を使う。**手書きのレスポンス型を作らない**
-- UIは shadcn/ui + Tailwind。**色・間隔・角丸を任意の値でハードコードしない**
-  （Tailwind のテーマトークンを使い、必要なら `tailwind.config` に足す）
+- UIは shadcn/ui + Tailwind CSS v4。**色・間隔・角丸を任意の値でハードコードしない**
+  （テーマトークンを使い、必要なら `frontend/src/index.css` の `@theme` に足す。
+  **v4 は `tailwind.config` を持たない。** 色を足すときは `:root` と `.dark` の両方に
+  CSS 変数を定義し、`@theme inline` でユーティリティに結びつける）
 - ダークテーマとライトテーマの両方で成立させる
 - **モバイルファースト。** タップ領域44px以上、キーボードフォーカス可視、
   `prefers-reduced-motion` 対応を維持する
