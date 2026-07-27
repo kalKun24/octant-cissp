@@ -5,19 +5,17 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/kalKun24/octant-cissp/backend/internal/interface/openapi"
 )
 
 // Envelope は全レスポンス共通の封筒。Data と Error はどちらか一方が必ず null になる。
-type Envelope struct {
-	Data  any    `json:"data"`
-	Error *Error `json:"error"`
-}
+// 形は api/openapi.yaml の Envelope が正。手書きで二重定義しないため別名にする。
+type Envelope = openapi.Envelope
 
 // Error は機械可読な Code と、そのまま画面に出せる日本語の Message を持つ。
-type Error struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
+// 形は api/openapi.yaml の Error が正。
+type Error = openapi.Error
 
 // WriteJSON は data を封筒に入れて書き出す。
 func WriteJSON(w http.ResponseWriter, status int, data any) {

@@ -1,10 +1,13 @@
 // Package handler は HTTP ハンドラを提供する。
+// 型とルートは api/openapi.yaml から生成した openapi パッケージが正であり、
+// ここではその ServerInterface を実装する。
 package handler
 
 import (
 	"net/http"
 
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/dto"
+	"github.com/kalKun24/octant-cissp/backend/internal/interface/openapi"
 )
 
 // Health は死活監視のハンドラ。認証を要しない唯一のエンドポイント。
@@ -20,20 +23,17 @@ func NewHealth(revision string) *Health {
 	return &Health{revision: revision}
 }
 
-// HealthResponse は GET /health の応答。
-type HealthResponse struct {
-	Status   string `json:"status"`
-	Revision string `json:"revision"`
+// GetHealth は GET /health を処理する。
+func (h *Health) GetHealth(w http.ResponseWriter, _ *http.Request) {
+	dto.WriteJSON(w, http.StatusOK, openapi.Health{
+		Status:   openapi.Ok,
+		Revision: h.revision,
+	})
 }
 
-// Get は GET /health を処理する。
-func (h *Health) Get(w http.ResponseWriter, _ *http.Request) {
-	dto.WriteJSON(w, http.StatusOK, HealthResponse{Status: "ok", Revision: h.revision})
-}
-
-// Head は HEAD /health を処理する。GET と同じステータスをボディなしで返す。
+// HeadHealth は HEAD /health を処理する。GET と同じステータスをボディなしで返す。
 // 判定に revision は要らないため、レシーバの状態は参照しない。
-func (*Health) Head(w http.ResponseWriter, _ *http.Request) {
+func (*Health) HeadHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 }

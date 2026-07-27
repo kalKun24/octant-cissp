@@ -20,6 +20,7 @@ import (
 	"github.com/kalKun24/octant-cissp/backend/internal/infrastructure/middleware"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/dto"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/handler"
+	"github.com/kalKun24/octant-cissp/backend/internal/interface/openapi"
 )
 
 const (
@@ -176,14 +177,31 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 	})
 	r.MethodNotAllowed(methodNotAllowed(r))
 
-	// /health は死活監視用のため認証を要しない。
-	// HEAD は curl -I や外部監視ツールが使うため、このパスだけ登録する
-	// （業務 API は GET のみ。openapi.yaml に無いメソッドを実装に生やさない）。
-	health := handler.NewHealth(cfg.Revision)
-	r.Get("/health", health.Get)
-	r.Head("/health", health.Head)
+	// ルートの登録は openapi.yaml から生成した HandlerWithOptions に任せる。
+	// 手で r.Get(...) を書かないことで、仕様に無いエンドポイントが実装に生えない。
+	// /health は死活監視用のため認証を要しない。HEAD も openapi.yaml で
+	// 明示しているパスだけに生成される（chi は GET から HEAD を自動生成しない）。
+	srv := handler.NewServer(handler.NewHealth(cfg.Revision))
+	openapi.HandlerWithOptions(srv, openapi.ChiServerOptions{
+		BaseRouter:       r,
+		ErrorHandlerFunc: parameterErrorHandler(logger),
+	})
 
 	return r
+}
+
+// parameterErrorHandler は生成コードがパラメータの解釈に失敗したときの応答を作る。
+// 既定は http.Error でプレーンテキストを返すため、封筒に差し替える。
+func parameterErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		// 詳細は利用者に返さず記録だけ残す（内部情報を漏らさないため）。
+		logger.LogAttrs(r.Context(), slog.LevelWarn, "リクエストパラメータの解釈に失敗しました",
+			slog.String("path", r.URL.Path),
+			slog.String("error", err.Error()),
+		)
+		dto.WriteError(w, http.StatusBadRequest, "INVALID_PARAMETER",
+			"リクエストパラメータの形式が正しくありません。値を確認してください。")
+	}
 }
 
 // probeMethods は Allow ヘッダを組み立てるときにルータへ問い合わせるメソッド。
