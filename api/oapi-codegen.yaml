@@ -1,0 +1,14 @@
+# oapi-codegen（Go サーバ側）の生成設定。make gen から使う。
+# 生成物は backend/internal/interface/openapi/openapi.gen.go に出る。手で編集しない。
+package: openapi
+output: ../backend/internal/interface/openapi/openapi.gen.go
+
+generate:
+  # chi 向けの ServerInterface と、既存ルータへ登録するための HandlerWithOptions。
+  chi-server: true
+  # components/schemas と components/parameters の型。
+  models: true
+
+output-options:
+  # 生成物であることを機械にも人にも示す。golangci-lint もこの行で生成物と判定する。
+  skip-prune: true
