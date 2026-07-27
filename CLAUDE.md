@@ -12,7 +12,7 @@ CISSP試験対策のための共有学習ノートアプリ。問題ノートと
 
 | 領域 | 採用 | 備考 |
 |---|---|---|
-| API | Go 1.25 / chi / oapi-codegen v2 | クリーンアーキテクチャ。`api/openapi.yaml` が正 |
+| API | Go 1.26 / chi / oapi-codegen v2 | クリーンアーキテクチャ。`api/openapi.yaml` が正 |
 | API仕様 | OpenAPI 3.1（仕様先行） | 手で書いた yaml から Go と TS の型を生成 |
 | フロント | React 19 / TypeScript / Vite | React Router + TanStack Query + shadcn/ui + Tailwind CSS |
 | 永続化 | Cloud Firestore (Native) | RDB・Redis・キューは使わない |
@@ -92,7 +92,6 @@ tickets/                     チケット（backlog / in-progress / done）
 
 **`backend/internal/interface/repository/` は作らない。** リポジトリの
 インターフェースは `domain/repository/` に置く（依存を内側に向けるため）。
-雛形に残っている `usecase/reservation/` は他プロジェクトの残骸なので削除する。
 
 ## コマンド
 
@@ -280,8 +279,10 @@ infrastructure ──▶ interface ──▶ usecase ──▶ domain
 - **サーバ状態は TanStack Query が持つ。** グローバルな状態ストアを別に作らない。
   クライアント固有の状態（開いているシート、入力途中の値）だけ `useState` / Context
 - API呼び出しは `src/api/` の生成済み型を使う。**手書きのレスポンス型を作らない**
-- UIは shadcn/ui + Tailwind。**色・間隔・角丸を任意の値でハードコードしない**
-  （Tailwind のテーマトークンを使い、必要なら `tailwind.config` に足す）
+- UIは shadcn/ui + Tailwind CSS v4。**色・間隔・角丸を任意の値でハードコードしない**
+  （テーマトークンを使い、必要なら `frontend/src/index.css` の `@theme` に足す。
+  **v4 は `tailwind.config` を持たない。** 色を足すときは `:root` と `.dark` の両方に
+  CSS 変数を定義し、`@theme inline` でユーティリティに結びつける）
 - ダークテーマとライトテーマの両方で成立させる
 - **モバイルファースト。** タップ領域44px以上、キーボードフォーカス可視、
   `prefers-reduced-motion` 対応を維持する
@@ -378,8 +379,12 @@ Firebase Hosting 10GB保存・日360MB転送。
 
 ## 現状
 
-**未着手**（2026-07-27 時点）。ディレクトリの雛形と `tickets/backlog/` の
-v1チケット15件のみ存在し、実装はこれから。着手は TICKET-001 から順に行う。
+**TICKET-001（リポジトリ基盤）まで完了**（2026-07-27 時点）。
+
+- `make` が一通り動く。`/health` を返す Go サーバ、React 19 + Tailwind v4 +
+  shadcn/ui のフロント、distroless の Dockerfile、PR での CI が揃っている
+- **API 本体はこれから。** `api/openapi.yaml` も認証もまだ存在しない
+- 次は TICKET-002（OpenAPI 骨子とコード生成）→ TICKET-003（認証基盤）の順
 
 v1 のスコープ（すべて実装対象）:
 

@@ -4,6 +4,11 @@
 !.env.example
 *service-account*.json
 *credentials*.json
+# google-github-actions/auth が CI 実行中に書き出す一時認証情報
+gha-creds-*.json
+*.pem
+*.key
+*.p12
 
 # Go
 /backend/bin/
@@ -14,6 +19,7 @@
 # Node
 node_modules/
 /frontend/dist/
+/frontend/coverage/
 .vite/
 *.tsbuildinfo
 
