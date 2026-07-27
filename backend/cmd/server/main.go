@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -167,18 +168,70 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 	r.Use(middleware.Recovery(logger))
 
 	// chi の既定はプレーンテキストを返すため、{data, error} の封筒に差し替える。
+	// 末尾スラッシュ（/health/）は別パスとして 404 にする。
+	// StripSlashes / RedirectSlashes は使わない（1リソース1URLを保つため）。
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		dto.WriteError(w, http.StatusNotFound, "NOT_FOUND",
 			"指定されたエンドポイントは存在しません。URL を確認してください。")
 	})
-	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
-		dto.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
-			"このエンドポイントでは指定の HTTP メソッドを使用できません。")
-	})
+	r.MethodNotAllowed(methodNotAllowed(r))
 
 	// /health は死活監視用のため認証を要しない。
+	// HEAD は curl -I や外部監視ツールが使うため、このパスだけ登録する
+	// （業務 API は GET のみ。openapi.yaml に無いメソッドを実装に生やさない）。
 	health := handler.NewHealth(cfg.Revision)
 	r.Get("/health", health.Get)
+	r.Head("/health", health.Head)
 
 	return r
+}
+
+// probeMethods は Allow ヘッダを組み立てるときにルータへ問い合わせるメソッド。
+// chi が扱う CONNECT / TRACE はこの API で使わないため含めない。
+var probeMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodOptions,
+}
+
+// methodNotAllowed は 405 応答のハンドラを作る。
+//
+// RFC 9110 §15.5.6 は 405 に Allow ヘッダを付けることを MUST としている。
+// chi は既定のハンドラでこれを組み立てるが、許可メソッドは非公開フィールド
+// （Context.methodsAllowed）にあり、差し替えたハンドラからは読めない。
+// そのため公開 API の Mux.Match でルータに問い合わせ直して組み立てる。
+func methodNotAllowed(router *chi.Mux) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if allow := allowedMethods(router, routingPath(r)); allow != "" {
+			w.Header().Set("Allow", allow)
+		}
+		dto.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
+			"このエンドポイントでは指定の HTTP メソッドを使用できません。")
+	}
+}
+
+// allowedMethods は path に登録されているメソッドをカンマ区切りで返す。
+// 1つも登録が無ければ空文字を返す（この場合は Allow を付けない）。
+func allowedMethods(router *chi.Mux, path string) string {
+	allowed := make([]string, 0, len(probeMethods))
+	for _, method := range probeMethods {
+		// Match は渡した Context を書き換えるため、毎回新しいものを渡す。
+		if router.Match(chi.NewRouteContext(), method, path) {
+			allowed = append(allowed, method)
+		}
+	}
+	return strings.Join(allowed, ", ")
+}
+
+// routingPath は chi がルーティングに使うパスを返す。
+// chi 本体（Mux.ServeHTTP）と同じ優先順位で RawPath を先に見る。
+func routingPath(r *http.Request) string {
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	return r.URL.Path
 }

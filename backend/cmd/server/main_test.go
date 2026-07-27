@@ -3,8 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/kalKun24/octant-cissp/backend/internal/config"
 )
 
 func TestCloudSeverity(t *testing.T) {
@@ -68,4 +73,128 @@ func TestToCloudLoggingKeys(t *testing.T) {
 	if got["path"] != "/health" {
 		t.Errorf("path: got %v, want %q", got["path"], "/health")
 	}
+}
+
+// TestRouterRouting は TICKET-002 で決めたルーティング方針を固定する。
+//
+//   - 405 には Allow ヘッダを付ける（RFC 9110 §15.5.6 の MUST）
+//   - HEAD は /health だけ登録し、ボディを返さない
+//   - 末尾スラッシュは別パスとして 404 にする（StripSlashes は使わない）
+func TestRouterRouting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantAllow  string
+		wantBody   bool
+		wantCode   string
+	}{
+		{
+			name:       "GET /health は 200 と封筒を返す",
+			method:     http.MethodGet,
+			path:       "/health",
+			wantStatus: http.StatusOK,
+			wantBody:   true,
+		},
+		{
+			name:       "HEAD /health は 200 でボディを返さない",
+			method:     http.MethodHead,
+			path:       "/health",
+			wantStatus: http.StatusOK,
+			wantBody:   false,
+		},
+		{
+			name:       "POST /health は 405 と Allow ヘッダを返す",
+			method:     http.MethodPost,
+			path:       "/health",
+			wantStatus: http.StatusMethodNotAllowed,
+			wantAllow:  "GET, HEAD",
+			wantBody:   true,
+			wantCode:   "METHOD_NOT_ALLOWED",
+		},
+		{
+			name:       "末尾スラッシュは別パスとして 404 になる",
+			method:     http.MethodGet,
+			path:       "/health/",
+			wantStatus: http.StatusNotFound,
+			wantBody:   true,
+			wantCode:   "NOT_FOUND",
+		},
+		{
+			name:       "未登録のパスは 404 になる",
+			method:     http.MethodGet,
+			path:       "/unknown",
+			wantStatus: http.StatusNotFound,
+			wantBody:   true,
+			wantCode:   "NOT_FOUND",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			router := newTestRouter()
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil))
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("ステータス: got %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if got := rec.Header().Get("Allow"); got != tt.wantAllow {
+				t.Errorf("Allow: got %q, want %q", got, tt.wantAllow)
+			}
+
+			body, err := io.ReadAll(rec.Body)
+			if err != nil {
+				t.Fatalf("ボディの読み出しに失敗しました: %v", err)
+			}
+			if tt.wantBody != (len(body) > 0) {
+				t.Fatalf("ボディの有無: got %d バイト, want %v", len(body), tt.wantBody)
+			}
+			if !tt.wantBody {
+				return
+			}
+
+			// 成否にかかわらず {data, error} の封筒で返ること。
+			var envelope struct {
+				Data  json.RawMessage `json:"data"`
+				Error *struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(body, &envelope); err != nil {
+				t.Fatalf("レスポンスの解析に失敗しました: %v（body=%s）", err, body)
+			}
+
+			if tt.wantCode == "" {
+				if envelope.Error != nil {
+					t.Errorf("error は null であるべきです: got %+v", envelope.Error)
+				}
+				return
+			}
+			if envelope.Error == nil {
+				t.Fatalf("error が入っているべきです: body=%s", body)
+			}
+			if envelope.Error.Code != tt.wantCode {
+				t.Errorf("error.code: got %q, want %q", envelope.Error.Code, tt.wantCode)
+			}
+			if envelope.Error.Message == "" {
+				t.Error("error.message が空です")
+			}
+			if string(envelope.Data) != "null" {
+				t.Errorf("失敗時の data: got %s, want null", envelope.Data)
+			}
+		})
+	}
+}
+
+// newTestRouter はテスト用のルータを作る。ログは捨てる。
+func newTestRouter() http.Handler {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return newRouter(logger, &config.Config{Revision: "test-revision"})
 }
