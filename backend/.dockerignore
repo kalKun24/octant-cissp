@@ -1,0 +1,20 @@
+# ビルドコンテキストから除外するもの。イメージに混ぜない・キャッシュを無駄に壊さない。
+Dockerfile
+.dockerignore
+
+# ビルド成果物
+bin/
+*.exe
+*.test
+*.out
+
+# 資格情報（誤ってコンテキストに置かれた場合の保険）
+*.env
+.env
+.env.*
+*service-account*.json
+*credentials*.json
+
+# エディタ・OS
+.DS_Store
+*.swp
