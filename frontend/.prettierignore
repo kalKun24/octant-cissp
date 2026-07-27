@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+
+# openapi.yaml から生成したコードは整形の対象外です（手で編集しないため）。
+src/api/generated/
