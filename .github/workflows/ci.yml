@@ -1,6 +1,6 @@
 # PR の静的解析とテスト。
 #
-# make gen の差分検証は TICKET-002（OpenAPI 骨子）で追加する。
+# API First を機械的に強制するため、lint より前に make gen の差分を検証する。
 name: CI
 
 on:
@@ -64,6 +64,12 @@ jobs:
         run: |
           make setup-back
           make setup-front
+
+      # openapi.yaml を直したのに make gen を忘れた PR をここで落とす。
+      # 生成物と仕様がずれると「型は通るが実挙動と契約が食い違う」状態になるため、
+      # lint やテストより前に検証する。
+      - name: make gen の差分検証（API First）
+        run: make gen-check
 
       - name: lint（golangci-lint / eslint / tsc --noEmit）
         run: make lint
