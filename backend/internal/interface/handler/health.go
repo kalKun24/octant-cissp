@@ -23,7 +23,7 @@ func NewHealth(revision string) *Health {
 	return &Health{revision: revision}
 }
 
-// GetHealth は GET /health を処理する。
+// GetHealth は GET /api/health を処理する。
 func (h *Health) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	dto.WriteJSON(w, http.StatusOK, openapi.Health{
 		Status:   openapi.Ok,
@@ -31,7 +31,7 @@ func (h *Health) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// HeadHealth は HEAD /health を処理する。GET と同じステータスをボディなしで返す。
+// HeadHealth は HEAD /api/health を処理する。GET と同じステータスをボディなしで返す。
 // 判定に revision は要らないため、レシーバの状態は参照しない。
 func (*Health) HeadHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

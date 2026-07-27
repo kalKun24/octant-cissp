@@ -51,7 +51,7 @@ func TestToCloudLoggingKeys(t *testing.T) {
 		ReplaceAttr: toCloudLogging,
 	}))
 
-	logger.Error("パニックから復帰しました", slog.String("path", "/health"))
+	logger.Error("パニックから復帰しました", slog.String("path", "/api/health"))
 
 	var got map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
@@ -70,15 +70,15 @@ func TestToCloudLoggingKeys(t *testing.T) {
 		}
 	}
 	// 独自フィールドは変換対象外であること。
-	if got["path"] != "/health" {
-		t.Errorf("path: got %v, want %q", got["path"], "/health")
+	if got["path"] != "/api/health" {
+		t.Errorf("path: got %v, want %q", got["path"], "/api/health")
 	}
 }
 
 // TestRouterRouting は TICKET-002 で決めたルーティング方針を固定する。
 //
 //   - 405 には Allow ヘッダを付ける（RFC 9110 §15.5.6 の MUST）
-//   - HEAD は /health だけ登録し、ボディを返さない
+//   - HEAD は /api/health だけ登録し、ボディを返さない
 //   - 末尾スラッシュは別パスとして 404 にする（StripSlashes は使わない）
 func TestRouterRouting(t *testing.T) {
 	t.Parallel()
@@ -93,23 +93,23 @@ func TestRouterRouting(t *testing.T) {
 		wantCode   string
 	}{
 		{
-			name:       "GET /health は 200 と封筒を返す",
+			name:       "GET /api/health は 200 と封筒を返す",
 			method:     http.MethodGet,
-			path:       "/health",
+			path:       "/api/health",
 			wantStatus: http.StatusOK,
 			wantBody:   true,
 		},
 		{
-			name:       "HEAD /health は 200 でボディを返さない",
+			name:       "HEAD /api/health は 200 でボディを返さない",
 			method:     http.MethodHead,
-			path:       "/health",
+			path:       "/api/health",
 			wantStatus: http.StatusOK,
 			wantBody:   false,
 		},
 		{
-			name:       "POST /health は 405 と Allow ヘッダを返す",
+			name:       "POST /api/health は 405 と Allow ヘッダを返す",
 			method:     http.MethodPost,
-			path:       "/health",
+			path:       "/api/health",
 			wantStatus: http.StatusMethodNotAllowed,
 			wantAllow:  "GET, HEAD",
 			wantBody:   true,
@@ -118,7 +118,7 @@ func TestRouterRouting(t *testing.T) {
 		{
 			name:       "末尾スラッシュは別パスとして 404 になる",
 			method:     http.MethodGet,
-			path:       "/health/",
+			path:       "/api/health/",
 			wantStatus: http.StatusNotFound,
 			wantBody:   true,
 			wantCode:   "NOT_FOUND",
@@ -127,6 +127,16 @@ func TestRouterRouting(t *testing.T) {
 			name:       "未登録のパスは 404 になる",
 			method:     http.MethodGet,
 			path:       "/unknown",
+			wantStatus: http.StatusNotFound,
+			wantBody:   true,
+			wantCode:   "NOT_FOUND",
+		},
+		{
+			// 基底パスは /api だけ。二重登録すると openapi.yaml に無いパスが
+			// 実装に生えることになるため、プレフィックス無しは 404 のままにする。
+			name:       "基底パスを欠いた /health は 404 になる",
+			method:     http.MethodGet,
+			path:       "/health",
 			wantStatus: http.StatusNotFound,
 			wantBody:   true,
 			wantCode:   "NOT_FOUND",

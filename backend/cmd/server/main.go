@@ -35,6 +35,13 @@ const (
 	// shutdownTimeout は停止時に処理中のリクエストを待つ上限。
 	// Cloud Run は SIGTERM の 10 秒後に SIGKILL を送るため、それより短くする。
 	shutdownTimeout = 8 * time.Second
+
+	// apiBasePath は全エンドポイントの基底パス。openapi.yaml の servers と揃える。
+	//
+	// Firebase Hosting の rewrites は /api/** をパスを書き換えずに Cloud Run へ
+	// 転送するため、サーバ側が /api を含むパスで待ち受ける必要がある。
+	// ローカルの Vite proxy も同じくプレフィックスを剥がさない。
+	apiBasePath = "/api"
 )
 
 func main() {
@@ -169,7 +176,7 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 	r.Use(middleware.Recovery(logger))
 
 	// chi の既定はプレーンテキストを返すため、{data, error} の封筒に差し替える。
-	// 末尾スラッシュ（/health/）は別パスとして 404 にする。
+	// 末尾スラッシュ（/api/health/）は別パスとして 404 にする。
 	// StripSlashes / RedirectSlashes は使わない（1リソース1URLを保つため）。
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		dto.WriteError(w, http.StatusNotFound, "NOT_FOUND",
@@ -179,10 +186,11 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 
 	// ルートの登録は openapi.yaml から生成した HandlerWithOptions に任せる。
 	// 手で r.Get(...) を書かないことで、仕様に無いエンドポイントが実装に生えない。
-	// /health は死活監視用のため認証を要しない。HEAD も openapi.yaml で
+	// /api/health は死活監視用のため認証を要しない。HEAD も openapi.yaml で
 	// 明示しているパスだけに生成される（chi は GET から HEAD を自動生成しない）。
 	srv := handler.NewServer(handler.NewHealth(cfg.Revision))
 	openapi.HandlerWithOptions(srv, openapi.ChiServerOptions{
+		BaseURL:          apiBasePath,
 		BaseRouter:       r,
 		ErrorHandlerFunc: parameterErrorHandler(logger),
 	})

@@ -26,7 +26,7 @@ func TestHealthGetHealth(t *testing.T) {
 			t.Parallel()
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/health", nil)
 
 			NewHealth(tt.revision).GetHealth(rec, req)
 
@@ -65,7 +65,7 @@ func TestHealthHeadHealth(t *testing.T) {
 	t.Parallel()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodHead, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodHead, "/api/health", nil)
 
 	NewHealth("octant-00001-abc").HeadHealth(rec, req)
 

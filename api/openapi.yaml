@@ -12,6 +12,15 @@ info:
   description: |
     ノート・タグ・ドリル・AI 生成・統計を提供する REST API です。
 
+    ## 基底パス
+
+    **すべてのパスは `/api` を基底とします。** この文書の `paths` に書かれた
+    `/health` の実際の URL は `/api/health` です。
+
+    Firebase Hosting の rewrites は `/api/**` をパスを書き換えずに
+    Cloud Run へ転送するため、サーバ側が `/api` を含むパスで待ち受けます。
+    ローカルでも Vite の proxy が同じ動きをします（プレフィックスを剥がしません）。
+
     ## 共通の約束
 
     - すべての応答は封筒 `{ "data": ..., "error": ... }` に入ります。
@@ -22,7 +31,7 @@ info:
       `items` / `next_cursor`）です。オフセット方式は提供しません。
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8080/api
     description: ローカル開発（make dev）
 
 tags:
