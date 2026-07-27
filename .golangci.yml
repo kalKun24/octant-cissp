@@ -1,0 +1,81 @@
+# golangci-lint の設定（v2 系の書式）。
+# Go のコードは backend/ 配下にあるが、設定はリポジトリ全体の規約なのでルートに置く。
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # standard = errcheck / govet / ineffassign / staticcheck / unused
+  default: standard
+  enable:
+    - bodyclose # HTTP レスポンスボディの閉じ忘れ
+    - contextcheck # 継承していない context の受け渡し
+    - copyloopvar # ループ変数の不要なコピー
+    - durationcheck # time.Duration の誤った乗算
+    - errorlint # %w の付け忘れ・誤った errors 比較
+    - gocritic # バグ・性能・可読性の総合診断
+    - gosec # セキュリティ（G112 のタイムアウト未設定など）
+    - misspell # 英単語のつづり間違い
+    - nilerr # err != nil なのに nil を返す
+    - noctx # context を渡さない外部呼び出し
+    - predeclared # 組み込み識別子の shadowing
+    - revive # 命名・コメント・可読性
+    - unconvert # 不要な型変換
+    - unparam # 使われていない引数・常に同じ戻り値
+    - usestdlibvars # 標準ライブラリの定数を使う（http.MethodGet など）
+    - wastedassign # 使われない代入
+    - whitespace # 関数先頭・末尾の余分な空行
+
+  settings:
+    errcheck:
+      # 書き出し系で戻り値を無視しがちなものは明示的に検査対象へ含める。
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        # fieldalignment はメモリ最適化目的で、可読性を犠牲にするため使わない。
+        - fieldalignment
+    gosec:
+      excludes:
+        # G104 は errcheck と重複するため無効化する。
+        - G104
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: errorf
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+          # エラー文言は日本語のため、英語前提の大文字・句読点チェックは無効にする。
+          disabled: true
+        - name: unexported-return
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # テストでは可読性を優先し、セキュリティ系・引数未使用の指摘を抑制する。
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/kalKun24/octant-cissp/backend

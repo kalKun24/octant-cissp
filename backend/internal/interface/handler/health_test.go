@@ -24,7 +24,7 @@ func TestHealthGet(t *testing.T) {
 			t.Parallel()
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 
 			NewHealth(tt.revision).Get(rec, req)
 
