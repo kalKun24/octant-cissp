@@ -1,0 +1,75 @@
+# PR の静的解析とテスト。
+#
+# make gen の差分検証は TICKET-002（OpenAPI 骨子）で追加する。
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+# 読み取り以外の権限は与えない。デプロイは TICKET-005 の別ワークフローが担う。
+permissions:
+  contents: read
+
+# 同じ PR に続けて push した場合、古い実行は打ち切る（無駄な実行時間を使わない）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "24"
+
+jobs:
+  lint-and-test:
+    name: lint と test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v5
+
+      - name: Go をセットアップ
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # モジュールとビルドキャッシュを go.sum の内容で紐付ける。
+          cache-dependency-path: backend/go.sum
+
+      - name: Node をセットアップ
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # golangci-lint は go install に時間がかかるため、バージョンをキーにして
+      # GOPATH/bin ごとキャッシュする。Makefile がバージョンを固定しているので
+      # Makefile のハッシュが変わったときだけ入れ直せばよい。
+      - name: Go ツールのキャッシュを復元
+        id: cache-go-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ env.GO_VERSION }}-${{ hashFiles('Makefile') }}
+
+      - name: Go ツールを導入（golangci-lint / oapi-codegen）
+        if: steps.cache-go-tools.outputs.cache-hit != 'true'
+        run: make setup-tools
+
+      - name: 依存を取得
+        run: |
+          make setup-back
+          make setup-front
+
+      - name: lint（golangci-lint / eslint / tsc --noEmit）
+        run: make lint
+
+      - name: backend のテスト
+        run: make test
+
+      - name: frontend のテスト
+        run: make test-front
