@@ -19,6 +19,15 @@ GitHub Actions から Workload Identity Federation でキーレス認証し、
 `develop` → dev 環境、`main` → prod 環境へ自動デプロイする。
 Firebase Hosting の `/api/**` rewrites で Cloud Run にプロキシする構成を確定させる。
 
+> **前提条件**: **TICKET-004 が dev / prod の両方に `apply` 済みであること。**
+> Cloud Run サービスや Artifact Registry が無い状態で自動デプロイが走れば失敗する。
+>
+> **⚠ `main` へマージした瞬間に prod デプロイが走る。**
+> GitHub Actions は `push` イベントで「push されたコミット内のワークフローファイル」を使うため、
+> このチケットを `main` にマージしたマージコミット自体が prod デプロイを発火させる。
+> そのため **このチケットの完了（マージ）は `develop` までに留め、
+> `main` へのリリースは TICKET-006 以降が揃ってから別途判断する。**
+
 ## 背景・目的
 
 手作業デプロイを禁止する方針（CLAUDE.md）を実行可能にする。

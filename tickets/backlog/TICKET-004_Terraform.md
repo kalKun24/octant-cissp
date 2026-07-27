@@ -18,6 +18,10 @@
 GCP のリソースを Terraform で定義する。Cloud Run・Firestore・Cloud Storage・
 Artifact Registry・Secret Manager・予算アラート・週次バックアップまで。dev / prod の2環境。
 
+> **順序の制約**: このチケットの `apply` は **TICKET-005（CI/CD）より先に完了している必要がある**。
+> Cloud Run サービスや Artifact Registry が存在しない状態で自動デプロイが走れば失敗するため。
+> **prod への `apply` も、TICKET-005 を `main` にマージする前に済ませておくこと。**
+
 ## 背景・目的
 
 手作業で作ったリソースは再現できず、コスト事故の温床になる。
@@ -27,6 +31,7 @@ Artifact Registry・Secret Manager・予算アラート・週次バックアッ�
 ## 受け入れ条件
 
 - [ ] `make tf-plan ENV=dev` と `make tf-plan ENV=prod` がエラーなく差分を出力する
+- [ ] **dev と prod の両方に `apply` が完了している**（TICKET-005 の前提条件）
 - [ ] tfstate が GCS バックエンド（環境ごとに別バケット、バージョニング有効）に保存される
 - [ ] **Cloud Run の `min_instances` が 0** に設定されている
 - [ ] **Cloud Run の `max_instances` が dev: 2 / prod: 5** に設定されている
@@ -56,3 +61,4 @@ Artifact Registry・Secret Manager・予算アラート・週次バックアッ�
 - GCPプロジェクト: dev `octant-dev` / prod `octant`。リージョン `asia-northeast1`
 - **`min_instances = 1` にするとアイドル課金で月2,000円規模**になる。0 を厳守
 - 外部ロードバランサは使わない（転送ルールだけで月約2,800円の固定費が出るため）
+- 後続: **TICKET-005（CI/CD）はこのチケットの `apply` 完了を前提にしている**
