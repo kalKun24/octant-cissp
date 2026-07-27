@@ -1,0 +1,39 @@
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+*service-account*.json
+*credentials*.json
+
+# Go
+/backend/bin/
+*.exe
+*.test
+*.out
+
+# Node
+node_modules/
+/frontend/dist/
+.vite/
+*.tsbuildinfo
+
+# Terraform
+# .terraform.lock.hcl はプロバイダのバージョンを固定するためコミットする
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Firebase / エミュレータ
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# エディタ・OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
