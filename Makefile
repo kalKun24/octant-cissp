@@ -1,14 +1,20 @@
 # Octant のタスクランナー。CLAUDE.md「コマンド」の一覧を実体化したもの。
 #
-# gen / dev / deploy-dev / tf-plan / tf-apply は TICKET-002 以降で実装する。
+# dev / deploy-dev / tf-plan / tf-apply は後続チケットで実装する。
 # 現時点では未実装である旨を表示して異常終了する（嘘の成功を返さないため）。
 
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
+API_DIR      := $(CURDIR)/api
 BACKEND_DIR  := $(CURDIR)/backend
 FRONTEND_DIR := $(CURDIR)/frontend
 GOLANGCI_CONFIG := $(CURDIR)/.golangci.yml
+
+# make gen の入力と出力。gen-check はこの出力の差分だけを見る。
+OPENAPI_SPEC := $(API_DIR)/openapi.yaml
+GO_API_GEN   := $(BACKEND_DIR)/internal/interface/openapi/openapi.gen.go
+TS_API_GEN   := $(FRONTEND_DIR)/src/api/generated/schema.ts
 
 # go install で入るツールは PATH に無いことが多いため、GOPATH/bin を通しておく。
 GOPATH_BIN := $(shell go env GOPATH)/bin
@@ -57,6 +63,38 @@ setup-front: ## npm の依存を取得する
 	$(call require_frontend)
 	@# package-lock.json があれば再現性のある npm ci を使う。無ければ npm install で作る。
 	cd $(FRONTEND_DIR) && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# ---------------------------------------------------------------------------
+# コード生成（API First）
+# ---------------------------------------------------------------------------
+#
+# openapi.yaml が API の正。Go の ServerInterface と TS の型はそこから作る。
+# 生成物はコミットし、CI が gen-check で openapi.yaml との一致を検証する。
+
+.PHONY: gen
+gen: gen-back gen-front ## openapi.yaml から Go のサーバ型と TS の型を生成する
+
+.PHONY: gen-back
+gen-back: ## openapi.yaml から Go のサーバインターフェースを生成する
+	@mkdir -p $(dir $(GO_API_GEN))
+	@# oapi-codegen.yaml の output は相対パスのため、api/ を作業ディレクトリにして解決する。
+	cd $(API_DIR) && oapi-codegen --config oapi-codegen.yaml openapi.yaml
+
+.PHONY: gen-front
+gen-front: ## openapi.yaml から TypeScript の型を生成する
+	$(call require_frontend)
+	cd $(FRONTEND_DIR) && npm run gen
+
+.PHONY: gen-check
+gen-check: gen ## 生成物が openapi.yaml と一致することを検証する（CI 用）
+	@changed="$$(git status --porcelain -- $(GO_API_GEN) $(TS_API_GEN))"; \
+	if [ -n "$$changed" ]; then \
+		echo "エラー: 生成物が openapi.yaml と一致していません。" >&2; \
+		echo "make gen を実行し、生成物をコミットしてください。" >&2; \
+		git --no-pager diff -- $(GO_API_GEN) $(TS_API_GEN); \
+		exit 1; \
+	fi
+	@echo "生成物は $(OPENAPI_SPEC) と一致しています。"
 
 # ---------------------------------------------------------------------------
 # 静的解析
@@ -126,10 +164,6 @@ build-api: ## API コンテナをビルドする
 # ---------------------------------------------------------------------------
 # 未実装（後続チケットで実装する）
 # ---------------------------------------------------------------------------
-
-.PHONY: gen
-gen: ## [未実装] openapi.yaml から Go と TS の型を生成する
-	$(call not_implemented,make gen,TICKET-002 OpenAPI骨子とコード生成)
 
 .PHONY: dev
 dev: ## [未実装] エミュレータと API と Vite を同時起動する
