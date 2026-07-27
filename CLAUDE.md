@@ -92,7 +92,6 @@ tickets/                     チケット（backlog / in-progress / done）
 
 **`backend/internal/interface/repository/` は作らない。** リポジトリの
 インターフェースは `domain/repository/` に置く（依存を内側に向けるため）。
-雛形に残っている `usecase/reservation/` は他プロジェクトの残骸なので削除する。
 
 ## コマンド
 
@@ -380,8 +379,12 @@ Firebase Hosting 10GB保存・日360MB転送。
 
 ## 現状
 
-**未着手**（2026-07-27 時点）。ディレクトリの雛形と `tickets/backlog/` の
-v1チケット15件のみ存在し、実装はこれから。着手は TICKET-001 から順に行う。
+**TICKET-001（リポジトリ基盤）まで完了**（2026-07-27 時点）。
+
+- `make` が一通り動く。`/health` を返す Go サーバ、React 19 + Tailwind v4 +
+  shadcn/ui のフロント、distroless の Dockerfile、PR での CI が揃っている
+- **API 本体はこれから。** `api/openapi.yaml` も認証もまだ存在しない
+- 次は TICKET-002（OpenAPI 骨子とコード生成）→ TICKET-003（認証基盤）の順
 
 v1 のスコープ（すべて実装対象）:
 

@@ -84,8 +84,10 @@ lint-front: ## フロントを eslint と tsc --noEmit で検査する
 fmt: fmt-back fmt-front ## gofmt と prettier を実行する
 
 .PHONY: fmt-back
-fmt-back: ## Go を gofmt で整形する
-	cd $(BACKEND_DIR) && gofmt -w -l .
+fmt-back: ## Go を整形する（gofmt + goimports）
+	# gofmt だけでは import の並びを直せず、lint-back の goimports で落ちる。
+	# lint と同じ設定で整形し、「fmt を実行すれば lint が通る」状態を保つ。
+	cd $(BACKEND_DIR) && golangci-lint fmt --config $(GOLANGCI_CONFIG) ./...
 
 .PHONY: fmt-front
 fmt-front: ## フロントを prettier で整形する

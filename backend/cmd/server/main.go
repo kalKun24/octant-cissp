@@ -103,13 +103,55 @@ func run() error {
 }
 
 // newLogger は Cloud Logging が解釈できる構造化 JSON ロガーを作る。
+//
+// Cloud Run が読むのは severity / message で、slog の既定は level / msg。
+// そのままでは全ログが DEFAULT 重大度に落ち、panic のエラーログも
+// 障害として検出されない。ReplaceAttr でキー名と値を変換する。
 func newLogger(cfg *config.Config) *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel})
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:       cfg.LogLevel,
+		ReplaceAttr: toCloudLogging,
+	})
 
 	return slog.New(handler).With(
 		slog.String("env", cfg.Env),
 		slog.String("revision", cfg.Revision),
 	)
+}
+
+// toCloudLogging は slog の既定フィールド名を Cloud Logging の語彙へ写す。
+func toCloudLogging(groups []string, a slog.Attr) slog.Attr {
+	// グループ内の同名フィールドまで巻き込まないよう、トップレベルだけを対象にする。
+	if len(groups) > 0 {
+		return a
+	}
+
+	switch a.Key {
+	case slog.LevelKey:
+		a.Key = "severity"
+		if level, ok := a.Value.Any().(slog.Level); ok {
+			a.Value = slog.StringValue(cloudSeverity(level))
+		}
+	case slog.MessageKey:
+		a.Key = "message"
+	}
+
+	return a
+}
+
+// cloudSeverity は slog のレベルを Cloud Logging の LogSeverity に写す。
+// WARN だけ名称が異なる（Cloud Logging では WARNING）。
+func cloudSeverity(level slog.Level) string {
+	switch {
+	case level >= slog.LevelError:
+		return "ERROR"
+	case level >= slog.LevelWarn:
+		return "WARNING"
+	case level >= slog.LevelInfo:
+		return "INFO"
+	default:
+		return "DEBUG"
+	}
 }
 
 // newRouter はルータを組み立てる。ミドルウェアは外側から順に適用される。
