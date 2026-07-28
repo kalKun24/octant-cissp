@@ -1,15 +1,13 @@
 package main
 
 import (
-	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-
-	"github.com/kalKun24/octant-cissp/backend/internal/config"
 )
 
 // wantRoutes は登録を許可するルートの全集合。
@@ -31,23 +29,7 @@ var wantRoutes = []string{
 func TestRegisteredRoutesMatchSpec(t *testing.T) {
 	t.Parallel()
 
-	handler := newRouter(slog.New(slog.DiscardHandler), &config.Config{})
-
-	routes, ok := handler.(chi.Routes)
-	if !ok {
-		t.Fatalf("newRouter が chi.Routes を返していません: %T", handler)
-	}
-
-	var got []string
-	walk := func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		// chi はサブルータの結合部に "/*" を残すことがあるため落とす。
-		route = strings.TrimSuffix(route, "/*")
-		got = append(got, method+" "+route)
-		return nil
-	}
-	if err := chi.Walk(routes, walk); err != nil {
-		t.Fatalf("ルートの走査に失敗しました: %v", err)
-	}
+	got := registeredRoutes(t)
 
 	sort.Strings(got)
 	want := append([]string(nil), wantRoutes...)
@@ -65,6 +47,79 @@ func TestRegisteredRoutesMatchSpec(t *testing.T) {
 	for _, missing := range difference(want, got) {
 		t.Errorf("登録されているはずのルートがありません: %s", missing)
 	}
+}
+
+// TestNonPublicRoutesRequireAuth は「免除リストに無いルートは必ず 401 になる」ことを、
+// **登録されている全ルートを走査して**確かめる。
+//
+// 認証ミドルウェアは生成コードの Middlewares 経由で一律に適用されるため、
+// 個々のエンドポイントで付け忘れは起きない設計になっている。
+// このテストはその設計が実際に効いていることを毎回確認するもので、
+// TICKET-006 以降でエンドポイントが増えたときに退行を検知する。
+//
+// 免除リスト（publicRouteEntries）に足す変更を入れると、そのルートが
+// ここで「認証不要」側に移る。**差分レビューでそれが見えることに意味がある。**
+func TestNonPublicRoutesRequireAuth(t *testing.T) {
+	t.Parallel()
+
+	public := make(map[string]struct{}, len(publicRouteEntries))
+	for _, entry := range publicRouteEntries {
+		public[entry] = struct{}{}
+	}
+
+	routes := registeredRoutes(t)
+	if len(routes) == 0 {
+		t.Fatal("ルートが1つも登録されていません")
+	}
+
+	for _, route := range routes {
+		t.Run(route, func(t *testing.T) {
+			t.Parallel()
+
+			method, path, _ := strings.Cut(route, " ")
+
+			router := newTestRouter(t)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), method, path, nil))
+
+			if _, exempt := public[route]; exempt {
+				if rec.Code == http.StatusUnauthorized {
+					t.Errorf("免除ルートなのに 401 になりました。"+
+						"publicRouteEntries のパターンが chi の RoutePattern と一致していますか: %s", route)
+				}
+				return
+			}
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("トークン無しの %s が %d を返しました（401 であるべきです）。\n"+
+					"  認証ミドルウェアを通らないルートが登録されていないか、"+
+					"publicRouteEntries に意図せず追加されていないか確認してください。", route, rec.Code)
+			}
+		})
+	}
+}
+
+// registeredRoutes は実際にルータへ登録されているルートを "METHOD /pattern" で返す。
+func registeredRoutes(t *testing.T) []string {
+	t.Helper()
+
+	routes, ok := newTestRouter(t).(chi.Routes)
+	if !ok {
+		t.Fatal("newRouter が chi.Routes を返していません")
+	}
+
+	var got []string
+	walk := func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		// chi はサブルータの結合部に "/*" を残すことがあるため落とす。
+		route = strings.TrimSuffix(route, "/*")
+		got = append(got, method+" "+route)
+		return nil
+	}
+	if err := chi.Walk(routes, walk); err != nil {
+		t.Fatalf("ルートの走査に失敗しました: %v", err)
+	}
+
+	return got
 }
 
 // difference は a のうち b に含まれない要素を返す。
