@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "gen": "openapi-typescript ../api/openapi.yaml --output src/api/generated/schema.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings 0",
@@ -44,11 +45,18 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.8.0",
     "jsdom": "^30.0.0",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
+  },
+  "//overrides": "openapi-typescript 7.13.0 の peerDependencies は typescript ^5.x だが、本体は TypeScript 6 でも動く（make gen で検証済み）。openapi-typescript が TS 6 を宣言したらこの overrides を消す。",
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

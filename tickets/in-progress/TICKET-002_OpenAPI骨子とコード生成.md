@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | チケットID | TICKET-002 |
-| ステータス | 🔴 未着手 |
+| ステータス | 🟡 作業中 |
 | 作成日 | 2026-07-27 |
-| 着手日 | - |
+| 着手日 | 2026-07-28 |
 | 完了日 | - |
-| ブランチ名 | - |
-| PR番号 | - |
-| PRリンク | - |
+| ブランチ名 | `feature/TICKET-002` |
+| PR番号 | #6 |
+| PRリンク | https://github.com/kalKun24/octant-cissp/pull/6 |
 
 ## 概要
 
@@ -27,26 +27,28 @@ CI で生成物の差分を検知できないと、この規約は形骸化す�
 
 ## 受け入れ条件
 
-- [ ] `api/openapi.yaml` が OpenAPI 3.1 として妥当で、`/health` と共通スキーマを定義している
-- [ ] 共通スキーマとして `Envelope`（`data` / `error`）、`Error`（`code` / `message`）、
+- [x] `api/openapi.yaml` が OpenAPI 3.1 として妥当で、`/health` と共通スキーマを定義している
+- [x] 共通スキーマとして `Envelope`（`data` / `error`）、`Error`（`code` / `message`）、
       カーソルページネーションのパラメータ（`limit` / `cursor`）とレスポンス（`items` / `next_cursor`）が定義されている
-- [ ] `make gen` で Go のサーバインターフェース（chi 向け）と TypeScript の型が生成される
-- [ ] 生成物がコミットされている
-- [ ] **CI で `make gen` を実行し、差分が出たら失敗する**
-- [ ] 生成コードに手編集の禁止を示すヘッダコメントが入っている
-- [ ] `/health` のハンドラが生成インターフェース経由で実装されている
-- [ ] **405 応答に `Allow` ヘッダが付く**（`POST /health` で `Allow: GET, HEAD` を実測確認）
-- [ ] **`HEAD /health` が 200 を返す**（ボディなし。GET と同じステータス）
-- [ ] **末尾スラッシュ（`/health/`）が 404 のまま**（封筒形式）
+- [x] `make gen` で Go のサーバインターフェース（chi 向け）と TypeScript の型が生成される
+- [x] 生成物がコミットされている
+- [x] **CI で `make gen` を実行し、差分が出たら失敗する**
+- [x] 生成コードに手編集の禁止を示すヘッダコメントが入っている
+- [x] `/health` のハンドラが生成インターフェース経由で実装されている
+- [x] **405 応答に `Allow` ヘッダが付く**（`POST /health` で `Allow: GET, HEAD` を実測確認）
+- [x] **`HEAD /health` が 200 を返す**（ボディなし。GET と同じステータス）
+- [x] **末尾スラッシュ（`/health/`）が 404 のまま**（封筒形式）
 
 ## サブチケット（コミット計画）
 
-- [ ] `feat(api): openapi.yaml の骨子と共通スキーマを追加`
-- [ ] `chore(repo): oapi-codegen と TS 型生成の設定を追加`
-- [ ] `chore(repo): make gen を Makefile に追加`
-- [ ] `fix(backend): 405 に Allow ヘッダを付与し HEAD /health を登録`
-- [ ] `refactor(backend): /health を生成インターフェース経由の実装に変更`
-- [ ] `ci(repo): make gen の差分検証をワークフローに追加`
+- [x] `feat(api): openapi.yaml の骨子と共通スキーマを追加`
+- [x] `chore(repo): oapi-codegen と TS 型生成の設定を追加`
+- [x] `chore(repo): make gen を Makefile に追加`
+- [x] `fix(backend): 405 に Allow ヘッダを付与し HEAD /health を登録`
+- [x] `refactor(backend): /health を生成インターフェース経由の実装に変更`
+- [x] `ci(repo): make gen の差分検証をワークフローに追加`
+- [x] `fix(backend): API の基底パスを /api にする`（着手後に判明。Hosting の rewrites がパスを剥がさないため）
+- [x] `fix(TICKET-002): QAレビュー指摘の修正`
 
 ## 関連情報
 

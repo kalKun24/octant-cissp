@@ -31,15 +31,19 @@ tools: Bash, Read, ToolSearch
   **ログインAPIは存在しない**（トークンは Auth エミュレータが発行する）
 - 認可: ロールもチームも無い。**許可メールのホワイトリスト**（環境変数 `ALLOWED_EMAILS`）と
   **uid による個人データの分離**だけが防壁
-- ヘルスチェック: `GET /health`（認証不要）
+- **API の基底パスは `/api`。** すべてのエンドポイントが `/api` 配下にある
+  （Firebase Hosting の rewrites がパスを剥がさないため）。
+  `openapi.yaml` の `paths` は `/health` だが、**実 URL は `/api/health`**。
+  基底パスを欠いた `/health` は 404 になる
+- ヘルスチェック: `GET /api/health`（認証不要）
 - エミュレータのデータは揮発。停止すれば消える
 
 ## 実行手順
 
-1. **起動状態確認**: `curl -sf http://localhost:8080/health`
+1. **起動状態確認**: `curl -sf http://localhost:8080/api/health`
    - 成功 → 既存環境を再利用する（**この場合、最後に停止してはならない**）
    - 失敗 → `make dev` をバックグラウンドで起動し、「自分が起動した」ことを記録する
-2. **起動待ち**: `curl -sf --retry 20 --retry-delay 2 --retry-all-errors http://localhost:8080/health`
+2. **起動待ち**: `curl -sf --retry 20 --retry-delay 2 --retry-all-errors http://localhost:8080/api/health`
    - 併せて Auth エミュレータの疎通も確認する（`curl -sf http://localhost:9099/`）
    - 失敗したら `make dev` の出力ログで原因を確認する。**推測で環境をいじらず**呼び出し元に報告する
 3. **許可メールの確認**: リポジトリ直下の `.env`（無ければ `Makefile` / `backend/internal/config/`）を Read し、
@@ -83,7 +87,7 @@ tools: Bash, Read, ToolSearch
    必須文字列に空文字・超長文字列、`domain` に 0 や 9（1〜8 が正）、`type` に `q`/`k` 以外
 5. **ページネーション整合**: `next_cursor` をたどって全件が重複なく取得できるか、
    末尾で `next_cursor` が `null` になるか
-6. **回帰スモーク**: 変更対象外でも主要導線（`/health` → ノート一覧 GET を1〜2本）を確認する
+6. **回帰スモーク**: 変更対象外でも主要導線（`/api/health` → ノート一覧 GET を1〜2本）を確認する
 
 指定された変更範囲（diff・チケット）に関係するエンドポイントを優先し、範囲外で見つけた既存の乖離は本題と混ぜず「範囲外の既知課題」として分離して報告する。
 

@@ -64,6 +64,9 @@ linters:
     presets:
       - comments
       - std-error-handling
+    paths:
+      # oapi-codegen の生成物。指摘されても手では直せない（openapi.yaml を直して再生成する）。
+      - .*\.gen\.go$
     rules:
       # テストでは可読性を優先し、セキュリティ系・引数未使用の指摘を抑制する。
       - path: _test\.go
@@ -75,6 +78,11 @@ formatters:
   enable:
     - gofmt
     - goimports
+  exclusions:
+    generated: lax
+    paths:
+      # 生成物を整形すると make gen の出力と食い違い、CI の差分検証が落ちる。
+      - .*\.gen\.go$
   settings:
     goimports:
       local-prefixes:

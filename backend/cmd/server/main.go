@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/kalKun24/octant-cissp/backend/internal/infrastructure/middleware"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/dto"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/handler"
+	"github.com/kalKun24/octant-cissp/backend/internal/interface/openapi"
 )
 
 const (
@@ -33,6 +35,13 @@ const (
 	// shutdownTimeout は停止時に処理中のリクエストを待つ上限。
 	// Cloud Run は SIGTERM の 10 秒後に SIGKILL を送るため、それより短くする。
 	shutdownTimeout = 8 * time.Second
+
+	// apiBasePath は全エンドポイントの基底パス。openapi.yaml の servers と揃える。
+	//
+	// Firebase Hosting の rewrites は /api/** をパスを書き換えずに Cloud Run へ
+	// 転送するため、サーバ側が /api を含むパスで待ち受ける必要がある。
+	// ローカルの Vite proxy も同じくプレフィックスを剥がさない。
+	apiBasePath = "/api"
 )
 
 func main() {
@@ -167,18 +176,88 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 	r.Use(middleware.Recovery(logger))
 
 	// chi の既定はプレーンテキストを返すため、{data, error} の封筒に差し替える。
+	// 末尾スラッシュ（/api/health/）は別パスとして 404 にする。
+	// StripSlashes / RedirectSlashes は使わない（1リソース1URLを保つため）。
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		dto.WriteError(w, http.StatusNotFound, "NOT_FOUND",
 			"指定されたエンドポイントは存在しません。URL を確認してください。")
 	})
-	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
-		dto.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
-			"このエンドポイントでは指定の HTTP メソッドを使用できません。")
+	r.MethodNotAllowed(methodNotAllowed(r))
+
+	// ルートの登録は openapi.yaml から生成した HandlerWithOptions に任せる。
+	// 手で r.Get(...) を書かないことで、仕様に無いエンドポイントが実装に生えない。
+	// /api/health は死活監視用のため認証を要しない。HEAD も openapi.yaml で
+	// 明示しているパスだけに生成される（chi は GET から HEAD を自動生成しない）。
+	srv := handler.NewServer(handler.NewHealth(cfg.Revision))
+	openapi.HandlerWithOptions(srv, openapi.ChiServerOptions{
+		BaseURL:          apiBasePath,
+		BaseRouter:       r,
+		ErrorHandlerFunc: parameterErrorHandler(logger),
 	})
 
-	// /health は死活監視用のため認証を要しない。
-	health := handler.NewHealth(cfg.Revision)
-	r.Get("/health", health.Get)
-
 	return r
+}
+
+// parameterErrorHandler は生成コードがパラメータの解釈に失敗したときの応答を作る。
+// 既定は http.Error でプレーンテキストを返すため、封筒に差し替える。
+func parameterErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		// 詳細は利用者に返さず記録だけ残す（内部情報を漏らさないため）。
+		logger.LogAttrs(r.Context(), slog.LevelWarn, "リクエストパラメータの解釈に失敗しました",
+			slog.String("path", r.URL.Path),
+			slog.String("error", err.Error()),
+		)
+		dto.WriteError(w, http.StatusBadRequest, "INVALID_PARAMETER",
+			"リクエストパラメータの形式が正しくありません。値を確認してください。")
+	}
+}
+
+// probeMethods は Allow ヘッダを組み立てるときにルータへ問い合わせるメソッド。
+// chi が扱う CONNECT / TRACE はこの API で使わないため含めない。
+var probeMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodOptions,
+}
+
+// methodNotAllowed は 405 応答のハンドラを作る。
+//
+// RFC 9110 §15.5.6 は 405 に Allow ヘッダを付けることを MUST としている。
+// chi は既定のハンドラでこれを組み立てるが、許可メソッドは非公開フィールド
+// （Context.methodsAllowed）にあり、差し替えたハンドラからは読めない。
+// そのため公開 API の Mux.Match でルータに問い合わせ直して組み立てる。
+func methodNotAllowed(router *chi.Mux) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if allow := allowedMethods(router, routingPath(r)); allow != "" {
+			w.Header().Set("Allow", allow)
+		}
+		dto.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
+			"このエンドポイントでは指定の HTTP メソッドを使用できません。")
+	}
+}
+
+// allowedMethods は path に登録されているメソッドをカンマ区切りで返す。
+// 1つも登録が無ければ空文字を返す（この場合は Allow を付けない）。
+func allowedMethods(router *chi.Mux, path string) string {
+	allowed := make([]string, 0, len(probeMethods))
+	for _, method := range probeMethods {
+		// Match は渡した Context を書き換えるため、毎回新しいものを渡す。
+		if router.Match(chi.NewRouteContext(), method, path) {
+			allowed = append(allowed, method)
+		}
+	}
+	return strings.Join(allowed, ", ")
+}
+
+// routingPath は chi がルーティングに使うパスを返す。
+// chi 本体（Mux.ServeHTTP）と同じ優先順位で RawPath を先に見る。
+func routingPath(r *http.Request) string {
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	return r.URL.Path
 }

@@ -1,0 +1,313 @@
+# Octant API の仕様。**このファイルが API の正**。
+#
+# エンドポイントを追加・変更するときは、必ずここを先に直してから
+# `make gen` で Go のサーバインターフェースと TypeScript の型を生成する。
+# 生成物を手で編集しない（CLAUDE.md「API First」）。
+openapi: 3.1.0
+
+info:
+  title: Octant API
+  version: 0.1.0
+  summary: CISSP 試験対策の共有学習ノートアプリ Octant の REST API
+  description: |
+    ノート・タグ・ドリル・AI 生成・統計を提供する REST API です。
+
+    ## 基底パス
+
+    **すべてのパスは `/api` を基底とします。** この文書の `paths` に書かれた
+    `/health` の実際の URL は `/api/health` です。
+
+    Firebase Hosting の rewrites は `/api/**` をパスを書き換えずに
+    Cloud Run へ転送するため、サーバ側が `/api` を含むパスで待ち受けます。
+    ローカルでも Vite の proxy が同じ動きをします（プレフィックスを剥がしません）。
+
+    ## 共通の約束
+
+    - すべての応答は封筒 `{ "data": ..., "error": ... }` に入ります。
+      成功時は `error` が `null`、失敗時は `data` が `null` です。
+    - `error.code` は機械可読な SCREAMING_SNAKE_CASE、
+      `error.message` はそのまま画面に出せる日本語です。
+    - 一覧はカーソルページネーション（`limit` / `cursor` →
+      `items` / `next_cursor`）です。オフセット方式は提供しません。
+
+servers:
+  - url: http://localhost:8080/api
+    description: ローカル開発（make dev）
+
+tags:
+  - name: system
+    description: 死活監視など運用向けのエンドポイント。認証を要しません。
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [system]
+      summary: 死活確認
+      description: |
+        サーバが応答可能かを返します。Cloud Run と GCP ロードバランサの
+        ヘルスチェックが使うため、認証を要しません。
+      responses:
+        '200':
+          description: サーバは稼働しています。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthEnvelope'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    head:
+      operationId: headHealth
+      tags: [system]
+      summary: 死活確認（ボディなし）
+      description: |
+        `GET /health` と同じ判定をボディなしで返します。
+        `curl -I` や外部監視ツールが HEAD を使うため、このパスだけ HEAD を受け付けます。
+
+        **業務 API は GET のみを登録し、HEAD は 405 を返します。**
+        chi は GET に対して HEAD を自動登録しないため、
+        この仕様に書かれていないメソッドが実装に生えることはありません。
+      responses:
+        '200':
+          description: サーバは稼働しています。ボディは返しません。
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  # ---------------------------------------------------------------------------
+  # スキーマ
+  # ---------------------------------------------------------------------------
+  schemas:
+    Error:
+      type: object
+      title: Error
+      description: |
+        失敗の内容。`code` で分岐し、`message` はそのまま画面に表示します。
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: 機械可読なエラーコード（SCREAMING_SNAKE_CASE）。
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          minLength: 1
+          maxLength: 64
+          examples: [NOTE_NOT_FOUND]
+        message:
+          type: string
+          description: 利用者にそのまま見せる日本語の説明。内部情報を含めません。
+          minLength: 1
+          examples: [ノートが見つかりません。一覧から選び直してください。]
+
+    Envelope:
+      type: object
+      title: Envelope
+      description: |
+        全応答に共通する封筒。**`data` と `error` はどちらか一方が必ず `null`** です。
+
+        個別の応答は、このスキーマの `data` を具体的な型に差し替えた
+        `XxxEnvelope` として定義します（例: `HealthEnvelope`）。
+      required: [data, error]
+      properties:
+        data:
+          description: 成功時のペイロード。失敗時は `null`。
+        error:
+          description: 失敗時の内容。成功時は `null`。
+          oneOf:
+            - $ref: '#/components/schemas/Error'
+            - type: 'null'
+
+    ErrorEnvelope:
+      type: object
+      title: ErrorEnvelope
+      description: 失敗時の封筒。`data` は常に `null`。
+      required: [data, error]
+      properties:
+        data:
+          type: 'null'
+          description: 失敗時は常に `null`。
+        error:
+          $ref: '#/components/schemas/Error'
+
+    CursorPage:
+      type: object
+      title: CursorPage
+      description: |
+        カーソルページネーションの共通部分。
+
+        一覧エンドポイントは、このスキーマの `items` を具体的な要素型に
+        差し替えた `XxxPage` を定義し、それを `Envelope` の `data` に入れます。
+        **オフセット方式（`page` / `per_page`）は提供しません。**
+        Firestore の `Offset()` は読み飛ばした分も課金対象になるためです。
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          description: このページの要素。
+          items: {}
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+
+    NextCursor:
+      title: NextCursor
+      description: |
+        次ページを取得するための不透明なカーソル。
+        末尾に達している場合は `null` です。
+        値の形式は保証しません。そのまま `cursor` クエリに渡してください。
+
+        **サーバ側の実装者向け**: この値は URL のクエリに載り、ブラウザ履歴・Referer・
+        アクセスログに残ります。**内部識別子（uid・Firestore のドキュメントパス）を
+        含めないこと。** 改竄検知が必要なら署名を付けること。
+        詳細は `components/parameters/Cursor` の説明を参照してください。
+      type: ['string', 'null']
+      maxLength: 512
+      # 例は「中身が読めない不透明な値」であることを示すためのダミー。
+      # 平文の base64 JSON を手本にすると内部識別子の露出と IDOR を招くため使わない。
+      examples: ['b3BhcXVlLXRva2Vu']
+
+    Health:
+      type: object
+      title: Health
+      description: 死活確認の結果。
+      required: [status, revision]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          description: 稼働状態。稼働中は常に `ok`。
+          enum: [ok]
+        revision:
+          type: string
+          description: |
+            デプロイの識別子（Cloud Run の `K_REVISION`）。
+            不明な場合は `unknown` を返します。
+          minLength: 1
+          examples: [octant-00001-abc]
+
+    HealthEnvelope:
+      type: object
+      title: HealthEnvelope
+      description: '`GET /health` の成功応答。'
+      required: [data, error]
+      properties:
+        data:
+          $ref: '#/components/schemas/Health'
+        error:
+          type: 'null'
+          description: 成功時は常に `null`。
+
+  # ---------------------------------------------------------------------------
+  # パラメータ（一覧エンドポイントで再利用する）
+  # ---------------------------------------------------------------------------
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        1 ページあたりの最大件数。省略時は 50 件です。
+        Firestore の読み取り回数を抑えるため上限を 100 件に固定しています。
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
+      examples:
+        既定:
+          value: 50
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        前回の応答の `next_cursor` をそのまま渡します。
+        省略すると先頭から取得します。不正な値は 400 になります。
+
+        **カーソルはクライアントから改竄できる入力として扱ってください。**
+
+        - 内部識別子（uid・Firestore のドキュメントパス・メールアドレス）を含めないこと。
+          カーソルは URL のクエリに載るため、ブラウザ履歴・Referer・アクセスログに残ります
+        - リポジトリ層は**コレクションのルートを常に検証済みの uid から組み立て**、
+          カーソルから復元しないこと。復元すると他ユーザーのデータを読める（IDOR）
+        - 復号・検証に失敗したカーソルは 400 で拒否し、先頭にフォールバックしないこと
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+
+  # ---------------------------------------------------------------------------
+  # 共通のエラー応答
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: 入力が不正です。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Unauthorized:
+      description: 認証されていません（トークンが無い、または失効しています）。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Forbidden:
+      description: 認証済みですが、この操作は許可されていません。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    NotFound:
+      description: 対象が存在しません。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    MethodNotAllowed:
+      description: |
+        このパスでは指定の HTTP メソッドを使用できません。
+        許可されるメソッドを `Allow` ヘッダに列挙します。
+      headers:
+        Allow:
+          description: このパスで許可される HTTP メソッド（カンマ区切り）。
+          required: true
+          schema:
+            type: string
+            examples: ['GET, HEAD']
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    TooManyRequests:
+      description: レート制限に達しました。
+      headers:
+        Retry-After:
+          description: 再試行までに待つ秒数。
+          required: true
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    InternalServerError:
+      description: サーバ内部でエラーが発生しました。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
