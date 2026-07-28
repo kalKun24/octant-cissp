@@ -28,7 +28,9 @@ func TestLoadAppEnv(t *testing.T) {
 		{name: "local", appEnv: EnvLocal, want: EnvLocal},
 		{name: "dev", appEnv: EnvDev, want: EnvDev},
 		{name: "prod", appEnv: EnvProd, want: EnvProd},
-		{name: "未設定なら local", appEnv: "", want: EnvLocal},
+		// 既定値を持たせない。既定を local にすると、Cloud Run で
+		// 環境変数を入れ忘れたときにエミュレータガードが無効な状態で起動する。
+		{name: "未設定は起動失敗", appEnv: "", wantErr: true},
 		{name: "列挙値以外は起動失敗", appEnv: "production", wantErr: true},
 		{name: "大文字は受け付けない", appEnv: "PROD", wantErr: true},
 		{name: "打ち間違いは起動失敗", appEnv: "prd", wantErr: true},

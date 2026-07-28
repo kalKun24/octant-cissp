@@ -50,7 +50,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	appEnv, err := parseEnv(env("APP_ENV", EnvLocal))
+	appEnv, err := parseEnv(os.Getenv("APP_ENV"))
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,18 @@ func env(key, fallback string) string {
 	return fallback
 }
 
+// parseEnv は APP_ENV を検証する。
+//
+// **既定値を持たない。未設定・空文字は起動失敗にする。**
+// 既定を local にすると、Cloud Run で環境変数を入れ忘れたときに
+// local 扱いで起動し、checkEmulatorUsage のガードが無効化される
+// （dev / prod でのみ効くガードなので、local と誤認された時点で素通りする）。
+// 設定漏れは**必ず起動失敗として現れる**ようにする。
 func parseEnv(s string) (string, error) {
+	if s == "" {
+		return "", fmt.Errorf("APP_ENV が未設定です（%s のいずれかを指定してください）",
+			strings.Join(validEnvs, " / "))
+	}
 	for _, valid := range validEnvs {
 		if s == valid {
 			return s, nil
