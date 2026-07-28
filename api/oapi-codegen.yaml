@@ -10,5 +10,19 @@ generate:
   models: true
 
 output-options:
-  # 生成物であることを機械にも人にも示す。golangci-lint もこの行で生成物と判定する。
+  # どのオペレーションからも $ref されていない components を刈らせない。
+  #
+  # **この設定は現時点で必須。false にするとビルドが壊れる。**
+  # Envelope はどのパスからも参照されないが dto.Envelope が型エイリアスとして使うため、
+  # 刈られると undefined: openapi.Envelope でコンパイル不能になる。
+  # CursorPage / NextCursor / Limit / Cursor も同様に TICKET-006 以降で使うため残す。
+  #
+  # 注: 生成物であることを示す DO NOT EDIT ヘッダはこの設定と無関係に出力される。
+  # golangci-lint の除外もファイル名（*.gen.go）で判定しており、この行とは無関係。
   skip-prune: true
+
+compatibility:
+  # enum 定数に型名の接頭辞を付ける（Ok → HealthStatusOk）。
+  # 付けないと値名がパッケージ直下に出るため、別の enum が同じ値を持った時点で
+  # oapi-codegen が一斉リネームし、参照側が壊れる。
+  always-prefix-enum-values: true

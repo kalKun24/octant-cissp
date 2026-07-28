@@ -87,7 +87,14 @@ gen-front: ## openapi.yaml から TypeScript の型を生成する
 
 .PHONY: gen-check
 gen-check: gen ## 生成物が openapi.yaml と一致することを検証する（CI 用）
-	@changed="$$(git status --porcelain -- $(GO_API_GEN) $(TS_API_GEN))"; \
+	@git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { \
+		echo "エラー: git リポジトリの外では生成物の差分を検証できません。" >&2; \
+		exit 1; \
+	}
+	@changed="$$(git status --porcelain -- $(GO_API_GEN) $(TS_API_GEN))" || { \
+		echo "エラー: git status の実行に失敗しました。検証を続行できません。" >&2; \
+		exit 1; \
+	}; \
 	if [ -n "$$changed" ]; then \
 		echo "エラー: 生成物が openapi.yaml と一致していません。" >&2; \
 		echo "make gen を実行し、生成物をコミットしてください。" >&2; \

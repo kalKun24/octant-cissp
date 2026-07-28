@@ -12,13 +12,13 @@ import (
 
 // Defines values for HealthStatus.
 const (
-	Ok HealthStatus = "ok"
+	HealthStatusOk HealthStatus = "ok"
 )
 
 // Valid indicates whether the value is a known member of the HealthStatus enum.
 func (e HealthStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthStatusOk:
 		return true
 	default:
 		return false
@@ -39,8 +39,13 @@ type CursorPage struct {
 	// 末尾に達している場合は `null` です。
 	// 値の形式は保証しません。そのまま `cursor` クエリに渡してください。
 	//
+	// **サーバ側の実装者向け**: この値は URL のクエリに載り、ブラウザ履歴・Referer・
+	// アクセスログに残ります。**内部識別子（uid・Firestore のドキュメントパス）を
+	// 含めないこと。** 改竄検知が必要なら署名を付けること。
+	// 詳細は `components/parameters/Cursor` の説明を参照してください。
 	//
-	// Examples: eyJ1cGRhdGVkQXQiOiIyMDI2LTA3LTI4In0
+	//
+	// Examples: b3BhcXVlLXRva2Vu
 	NextCursor *NextCursor `json:"next_cursor"`
 }
 
@@ -107,7 +112,12 @@ type HealthEnvelope struct {
 // 末尾に達している場合は `null` です。
 // 値の形式は保証しません。そのまま `cursor` クエリに渡してください。
 //
-// Examples: eyJ1cGRhdGVkQXQiOiIyMDI2LTA3LTI4In0
+// **サーバ側の実装者向け**: この値は URL のクエリに載り、ブラウザ履歴・Referer・
+// アクセスログに残ります。**内部識別子（uid・Firestore のドキュメントパス）を
+// 含めないこと。** 改竄検知が必要なら署名を付けること。
+// 詳細は `components/parameters/Cursor` の説明を参照してください。
+//
+// Examples: b3BhcXVlLXRva2Vu
 type NextCursor = string
 
 // Cursor defines model for Cursor.

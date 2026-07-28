@@ -26,7 +26,7 @@ func NewHealth(revision string) *Health {
 // GetHealth は GET /api/health を処理する。
 func (h *Health) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	dto.WriteJSON(w, http.StatusOK, openapi.Health{
-		Status:   openapi.Ok,
+		Status:   openapi.HealthStatusOk,
 		Revision: h.revision,
 	})
 }

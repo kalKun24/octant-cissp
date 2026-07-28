@@ -48,8 +48,8 @@ func TestHealthGetHealth(t *testing.T) {
 			if body.Error != nil {
 				t.Errorf("error は null であるべきです: got %+v", body.Error)
 			}
-			if body.Data.Status != openapi.Ok {
-				t.Errorf("status: got %q, want %q", body.Data.Status, openapi.Ok)
+			if body.Data.Status != openapi.HealthStatusOk {
+				t.Errorf("status: got %q, want %q", body.Data.Status, openapi.HealthStatusOk)
 			}
 			if body.Data.Revision != tt.wantRevision {
 				t.Errorf("revision: got %q, want %q", body.Data.Revision, tt.wantRevision)

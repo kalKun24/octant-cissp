@@ -379,12 +379,15 @@ Firebase Hosting 10GB保存・日360MB転送。
 
 ## 現状
 
-**TICKET-001（リポジトリ基盤）まで完了**（2026-07-27 時点）。
+**TICKET-002（OpenAPI 骨子とコード生成）まで完了**（2026-07-28 時点）。
 
-- `make` が一通り動く。`/health` を返す Go サーバ、React 19 + Tailwind v4 +
-  shadcn/ui のフロント、distroless の Dockerfile、PR での CI が揃っている
-- **API 本体はこれから。** `api/openapi.yaml` も認証もまだ存在しない
-- 次は TICKET-002（OpenAPI 骨子とコード生成）→ TICKET-003（認証基盤）の順
+- `make` が一通り動く。React 19 + Tailwind v4 + shadcn/ui のフロント、
+  distroless の Dockerfile、PR での CI が揃っている
+- **`api/openapi.yaml` が API の正**。`make gen` で Go のサーバインターフェースと
+  TypeScript の型を生成し、CI の `make gen-check` が差分を検知する
+- **API の基底パスは `/api`。** 実装されているのは `GET /api/health` と `HEAD /api/health` のみ
+  （`openapi.yaml` の `paths` は `/health` で、基底は `servers` 側に持たせている）
+- **認証はまだ存在しない。** 次は TICKET-003（認証基盤）
 
 v1 のスコープ（すべて実装対象）:
 

@@ -95,7 +95,12 @@ export interface components {
          * @description 次ページを取得するための不透明なカーソル。
          *     末尾に達している場合は `null` です。
          *     値の形式は保証しません。そのまま `cursor` クエリに渡してください。
-         * @example eyJ1cGRhdGVkQXQiOiIyMDI2LTA3LTI4In0
+         *
+         *     **サーバ側の実装者向け**: この値は URL のクエリに載り、ブラウザ履歴・Referer・
+         *     アクセスログに残ります。**内部識別子（uid・Firestore のドキュメントパス）を
+         *     含めないこと。** 改竄検知が必要なら署名を付けること。
+         *     詳細は `components/parameters/Cursor` の説明を参照してください。
+         * @example b3BhcXVlLXRva2Vu
          */
         NextCursor: string | null;
         /**
@@ -206,6 +211,14 @@ export interface components {
         /**
          * @description 前回の応答の `next_cursor` をそのまま渡します。
          *     省略すると先頭から取得します。不正な値は 400 になります。
+         *
+         *     **カーソルはクライアントから改竄できる入力として扱ってください。**
+         *
+         *     - 内部識別子（uid・Firestore のドキュメントパス・メールアドレス）を含めないこと。
+         *       カーソルは URL のクエリに載るため、ブラウザ履歴・Referer・アクセスログに残ります
+         *     - リポジトリ層は**コレクションのルートを常に検証済みの uid から組み立て**、
+         *       カーソルから復元しないこと。復元すると他ユーザーのデータを読める（IDOR）
+         *     - 復号・検証に失敗したカーソルは 400 で拒否し、先頭にフォールバックしないこと
          */
         Cursor: string;
     };
