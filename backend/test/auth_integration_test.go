@@ -50,6 +50,19 @@ func TestAuthFlowIntegration(t *testing.T) {
 	unverified := emulator.SignUp(t, "unverified-"+allowedEmail, testPassword, false)
 	t.Cleanup(func() { emulator.DeleteUser(t, unverified.UID) })
 
+	// **認可バイパスの回帰テスト。**
+	// 許可メールの前後に空白を付けた「別 uid のアカウント」。
+	// Auth エミュレータは空白付きメールでの登録を許し、トークンの email クレームには
+	// 空白がそのまま載る。照合時に前後の空白を落としていると、この別人が 200 を得る。
+	// 実際にその状態だったため、403 になることをここで固定する。
+	spaced := emulator.SignUp(t, " "+allowedEmail+" ", testPassword, true)
+	t.Cleanup(func() { emulator.DeleteUser(t, spaced.UID) })
+
+	if spaced.UID == allowed.UID {
+		t.Fatalf("前提が崩れています: 空白付きメールが同じ uid になりました（%s）。"+
+			"別アカウントとして作られていないとバイパスの検証になりません。", spaced.UID)
+	}
+
 	server := httptest.NewServer(newAuthTestRouter(t, projectID, allowedEmail))
 	t.Cleanup(server.Close)
 
@@ -94,6 +107,15 @@ func TestAuthFlowIntegration(t *testing.T) {
 			token:      unverified.IDToken,
 			wantStatus: http.StatusUnauthorized,
 			wantCode:   "UNAUTHENTICATED",
+		},
+		{
+			// 認可バイパスの回帰テスト。ここが 200 に戻ったら、
+			// 許可リストの照合がトークン由来のメールを trim している。
+			name:       "許可メールの前後に空白を付けた別アカウントは 403",
+			path:       "/api/probe",
+			token:      spaced.IDToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
 		},
 		{
 			name:       "/api/health はトークン無しでも 200",
