@@ -5,11 +5,11 @@
 | 項目 | 内容 |
 |---|---|
 | チケットID | TICKET-003 |
-| ステータス | 🔴 未着手 |
+| ステータス | 🟡 作業中 |
 | 作成日 | 2026-07-27 |
-| 着手日 | - |
+| 着手日 | 2026-07-28 |
 | 完了日 | - |
-| ブランチ名 | - |
+| ブランチ名 | `feature/TICKET-003` |
 | PR番号 | - |
 | PRリンク | - |
 
@@ -37,11 +37,35 @@ Firebase Auth の ID トークンを検証する認証ミドルウェアを実�
 - [ ] context から `uid` を取り出すヘルパが `contextkey` 経由で提供されている
 - [ ] ログにトークン・メールアドレスが出力されない
 
+### TICKET-002 の QA からの申し送り（このチケットで対応する）
+
+- [ ] **認証免除は `chi.RouteContext(ctx).RoutePattern()` による allowlist で判定する。**
+      **パス文字列の比較にしない。** `main.go` の `routingPath()` は `RawPath` を優先し、
+      `logging.go` は `r.URL.Path`（デコード後）を見るため**パスの見え方が食い違う**
+      （実測: `GET /api/hea%6Cth` は 404 だがログには `/api/health` と出る）。
+      文字列比較にすると、この差が認証バイパスの入口になる
+- [ ] **allowlist は fail-closed。** 判定に失敗した場合・パターンが取れない場合は
+      **認証必須側に倒す**こと。「一致しなければ免除」は禁止
+- [ ] **`Cache-Control: no-store` と `X-Content-Type-Options: nosniff` を全 API 応答に付ける。**
+      認証を載せる前に入れる（TICKET-006 以降で同じ `dto.write` を個人データが通るため）
+- [ ] **`api/openapi.yaml` に `securitySchemes: bearerAuth` とトップレベル `security` を定義し、
+      `/health` だけ `security: []` で opt-out する。** opt-in 運用にすると
+      「書き忘れたエンドポイントが無認証」になり、`gen-check` でも検知できない
+- [ ] `APP_ENV` を `local` / `dev` / `prod` の列挙値として検証し、**不正値なら起動に失敗する**。
+      現状は既定値 `local` で無検証のため、エミュレータ接続を `Env` で分岐させると
+      **設定漏れが認証バイパス側に倒れる**
+- [ ] `logging.go` のアクセスログに `uid` を追加する（CLAUDE.md の要求フィールド）
+- [ ] `X-Request-Id` をクライアントから無検証で採用しない
+      （サーバ側生成にするか、長さと文字種を検証する）
+
 ## サブチケット（コミット計画）
 
+- [ ] `feat(api): openapi.yaml に bearerAuth と security を定義`
 - [ ] `feat(backend): Firebase Admin SDK の初期化と設定読み込みを追加`
 - [ ] `feat(backend): IDトークン検証ミドルウェアを追加`
 - [ ] `feat(backend): 許可メールのホワイトリスト検証を追加`
+- [ ] `feat(backend): 認証免除の allowlist を RoutePattern 判定で追加`
+- [ ] `feat(backend): セキュリティヘッダとアクセスログの uid を追加`
 - [ ] `chore(repo): make dev に Firestore と Auth のエミュレータを追加`
 - [ ] `test(backend): 認証ミドルウェアの統合テストを追加`
 
