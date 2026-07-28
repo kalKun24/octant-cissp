@@ -61,6 +61,20 @@ Firestore の `/notes/{noteId}` に 1ノート = 1ドキュメントで保存す
 - 同時編集はノート単位で後勝ち
 - **`Offset()` を使わない**（読み飛ばした分も課金される）
 
+### TICKET-003 からの申し送り: 環境に Java が無い
+
+**このチケットで初めて Firestore エミュレータが必要になる。**
+Firestore エミュレータは JRE を要求するが、**現在の開発環境に Java が入っていない。**
+
+- `make dev` は Auth エミュレータ・API・Vite までは起動するが、
+  **Firestore エミュレータの起動で停止する**（`エラー: java が見つかりません`）
+- `make test-integration` は現在 `--only auth` なので動いている。
+  **Firestore を足す際に `--only auth,firestore` へ変更すると Java が要る**
+- CI（ubuntu-latest）には Java が入っているが、**ワークフローに JRE のセットアップを
+  明示的に追加する**こと（現在は不要なので入れていない）
+
+着手時にまず `default-jre` 相当を導入し、`make dev` が最後まで通ることを確認すること。
+
 ### TICKET-002 の QA からの申し送り（このチケットで必ず対応する）
 
 **1. `openapi.yaml` の制約は実行時に一切効かない。バリデーションは自前で書く。**
