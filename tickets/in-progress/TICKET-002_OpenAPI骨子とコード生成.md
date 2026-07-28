@@ -10,8 +10,8 @@
 | 着手日 | 2026-07-28 |
 | 完了日 | - |
 | ブランチ名 | `feature/TICKET-002` |
-| PR番号 | - |
-| PRリンク | - |
+| PR番号 | #6 |
+| PRリンク | https://github.com/kalKun24/octant-cissp/pull/6 |
 
 ## 概要
 
