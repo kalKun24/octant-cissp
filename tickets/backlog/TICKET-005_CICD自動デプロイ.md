@@ -64,6 +64,23 @@ Firebase Hosting の `/api/**` rewrites で Cloud Run にプロキシする構�
 
 ## 関連情報
 
+### TICKET-003 からの申し送り: デプロイ後の起動確認と環境変数
+
+**`APP_ENV` / `FIREBASE_PROJECT_ID` / `ALLOWED_EMAILS` の3つが欠けると、
+Cloud Run のリビジョンは起動に失敗する**（設定漏れを既定値で黙って埋めると
+認証の緩い側へ倒れるため、あえて起動失敗にしてある）。値の設定自体は
+TICKET-004 の Terraform 側の責務だが、CI は次の2点に注意すること。
+
+- **デプロイ後に `GET /api/health` が 200 を返すことを確認するステップを入れる。**
+  上記の設定漏れは「新リビジョンが起動せず、旧リビジョンにトラフィックが
+  残ったまま」という形で現れるため、デプロイジョブ自体は成功してしまう
+- ワークフローから環境変数を上書きする場合も **`APP_ENV` を `local` にしない**。
+  `local` 以外でのみ `FIREBASE_AUTH_EMULATOR_HOST` の混入ガードが効く
+- **`FIREBASE_AUTH_EMULATOR_HOST` を CI からデプロイ先へ渡さない**
+  （エミュレータ接続時は ID トークンの署名検証が省略される）
+
+### そのほか
+
 - CLAUDE.md「インフラ・デプロイ」「全体構成」
 - **`firestore.rules` は全拒否のままにする。** ブラウザは Firestore に直接アクセスしない設計であり、
   ここに `allow` を書き足すことは設計違反

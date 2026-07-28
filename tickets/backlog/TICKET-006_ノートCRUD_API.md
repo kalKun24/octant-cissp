@@ -66,8 +66,10 @@ Firestore の `/notes/{noteId}` に 1ノート = 1ドキュメントで保存す
 **このチケットで初めて Firestore エミュレータが必要になる。**
 Firestore エミュレータは JRE を要求するが、**現在の開発環境に Java が入っていない。**
 
-- `make dev` は Auth エミュレータ・API・Vite までは起動するが、
-  **Firestore エミュレータの起動で停止する**（`エラー: java が見つかりません`）
+- **`make dev` は何も起動せずに即異常終了する**（`エラー: java が見つかりません`）。
+  `scripts/dev.sh` は起動処理の前に前提コマンドを確認しており、
+  `require java` がそこで止めるため、Auth エミュレータも API も Vite も立ち上がらない。
+  「途中まで起動する」わけではないので、Java を入れるまでローカル開発は始められない
 - `make test-integration` は現在 `--only auth` なので動いている。
   **Firestore を足す際に `--only auth,firestore` へ変更すると Java が要る**
 - CI（ubuntu-latest）には Java が入っているが、**ワークフローに JRE のセットアップを
