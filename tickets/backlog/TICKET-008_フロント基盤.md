@@ -19,6 +19,14 @@ React Router のルーティング、Firebase Auth の Google サインイン画
 ID トークンを自動付与する API クライアント、TanStack Query の設定、
 アプリ全体のシェル（ナビゲーション・テーマ切替）を実装する。
 
+> **前提条件**: **TICKET-016（GCP ブートストラップ）で Firebase ウェブアプリが登録され、
+> `firebaseConfig` が取得できていること。** これが無いと Firebase Auth を初期化できない。
+> 値は `frontend/.env.example` のキー（`VITE_FIREBASE_*`）に対応する環境変数で渡し、
+> **実値をリポジトリに置かない**（`firebaseConfig` は秘密情報ではないがプロジェクト固有）。
+>
+> ローカルでの動作確認は **Firebase Auth エミュレータ**（TICKET-003 で整備）を使うため、
+> 本物の Firebase プロジェクトが無くても開発は進められる。
+
 ## 背景・目的
 
 以降のすべての画面がこの土台の上に乗る。特に「ID トークンの付与」と

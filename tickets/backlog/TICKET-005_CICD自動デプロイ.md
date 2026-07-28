@@ -19,8 +19,16 @@ GitHub Actions から Workload Identity Federation でキーレス認証し、
 `develop` → dev 環境、`main` → prod 環境へ自動デプロイする。
 Firebase Hosting の `/api/**` rewrites で Cloud Run にプロキシする構成を確定させる。
 
-> **前提条件**: **TICKET-004 が dev / prod の両方に `apply` 済みであること。**
+> **前提条件**: **TICKET-016（GCP ブートストラップ）→ TICKET-004（Terraform）の順で
+> 完了していること。** GCP プロジェクトが無ければ WIF の作成先が無く、
 > Cloud Run サービスや Artifact Registry が無い状態で自動デプロイが走れば失敗する。
+>
+> ```
+> 016（ブートストラップ）→ 004（Terraform）→ 005（このチケット）
+> ```
+>
+> **鶏と卵に注意**: WIF を作るのは Terraform だが、その Terraform を CI から動かすにも
+> WIF が要る。**WIF の初回作成は手元の ADC で `apply` する**こと。
 >
 > **⚠ `main` へマージした瞬間に prod デプロイが走る。**
 > GitHub Actions は `push` イベントで「push されたコミット内のワークフローファイル」を使うため、

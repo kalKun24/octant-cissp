@@ -18,9 +18,18 @@
 GCP のリソースを Terraform で定義する。Cloud Run・Firestore・Cloud Storage・
 Artifact Registry・Secret Manager・予算アラート・週次バックアップまで。dev / prod の2環境。
 
+> **⚠ 前提条件: TICKET-016（GCP ブートストラップ）が完了していること。**
+> GCP プロジェクト・課金の紐付け・API の有効化・**tfstate 用 GCS バケット**が
+> 無いと `terraform init` すら通らない。**このチケットはプロジェクトを作らない。**
+> Terraform が管理するのは「プロジェクトの中身」だけ。
+>
 > **順序の制約**: このチケットの `apply` は **TICKET-005（CI/CD）より先に完了している必要がある**。
 > Cloud Run サービスや Artifact Registry が存在しない状態で自動デプロイが走れば失敗するため。
 > **prod への `apply` も、TICKET-005 を `main` にマージする前に済ませておくこと。**
+>
+> ```
+> 016（ブートストラップ）→ 004（このチケット）→ 005（CI/CD）
+> ```
 
 ## 背景・目的
 
@@ -32,7 +41,12 @@ Artifact Registry・Secret Manager・予算アラート・週次バックアッ�
 
 - [ ] `make tf-plan ENV=dev` と `make tf-plan ENV=prod` がエラーなく差分を出力する
 - [ ] **dev と prod の両方に `apply` が完了している**（TICKET-005 の前提条件）
-- [ ] tfstate が GCS バックエンド（環境ごとに別バケット、バージョニング有効）に保存される
+- [ ] tfstate が **TICKET-016 で作成済みの GCS バケット**を backend として使っている
+      （**このチケットでバケットを作らない**。Terraform は自分の state 置き場を同じ apply では作れない）
+- [ ] **Firestore データベースをこの Terraform で作成する**（TICKET-016 では作らない方針。
+      コンソールで先に作るとリージョンと PITR が Terraform 管理外になる）
+- [ ] 初回 `apply` は手元の ADC（`gcloud auth application-default login`）で実行する。
+      **CI からの Terraform 実行は TICKET-005 で WIF を作った後**（鶏と卵のため）
 - [ ] **Cloud Run の `min_instances` が 0** に設定されている
 - [ ] **Cloud Run の `max_instances` が dev: 2 / prod: 5** に設定されている
 - [ ] **Artifact Registry にクリーンアップポリシー（最新3世代のみ保持）**が設定されている
@@ -58,7 +72,9 @@ Artifact Registry・Secret Manager・予算アラート・週次バックアッ�
 ## 関連情報
 
 - CLAUDE.md「インフラ・デプロイ」「コスト規約」
-- GCPプロジェクト: dev `octant-dev` / prod `octant`。リージョン `asia-northeast1`
+- **前提: TICKET-016（GCP ブートストラップ）が完了していること**
+- GCPプロジェクト: dev `octant-dev` / prod `octant`。リージョン `asia-northeast1`。
+  **ただし TICKET-016 で実際に取得できた ID を正とする**（`octant` は全世界一意のため取れない可能性がある）
 - **`min_instances = 1` にするとアイドル課金で月2,000円規模**になる。0 を厳守
 - 外部ロードバランサは使わない（転送ルールだけで月約2,800円の固定費が出るため）
 - 後続: **TICKET-005（CI/CD）はこのチケットの `apply` 完了を前提にしている**
