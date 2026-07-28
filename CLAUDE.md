@@ -303,6 +303,11 @@ infrastructure ──▶ interface ──▶ usecase ──▶ domain
 | dev | `octant-dev` | `develop` | push で自動 |
 | prod | `octant` | `main` | push で自動 |
 
+**GCP はゼロから立ち上げる。** プロジェクトも課金の紐付けも存在しない状態が出発点で、
+TICKET-016（ブートストラップ）で作る。**上記のプロジェクト ID は希望値**であり、
+プロジェクト ID は全世界で一意のため取得できない可能性がある。
+**実際に取れた ID を正とし、この表を書き換えること。**
+
 **手で `gcloud run deploy` を打たない。** すべての変更は Terraform と
 GitHub Actions を経由する。緊急時に手で当てた場合は、その日のうちに
 Terraform 側へ反映して差分を消す。
@@ -387,7 +392,13 @@ Firebase Hosting 10GB保存・日360MB転送。
   TypeScript の型を生成し、CI の `make gen-check` が差分を検知する
 - **API の基底パスは `/api`。** 実装されているのは `GET /api/health` と `HEAD /api/health` のみ
   （`openapi.yaml` の `paths` は `/health` で、基底は `servers` 側に持たせている）
-- **認証はまだ存在しない。** 次は TICKET-003（認証基盤）
+- **認証はまだ存在しない**
+- **GCP のリソースは何も作られていない。** プロジェクトすら存在しない状態から始める
+  （TICKET-016 で立ち上げる）
+
+**実装順は `tickets/README.md` を参照。番号順ではない。**
+次は **TICKET-003（認証基盤）** または **TICKET-016（GCP ブートストラップ）**。
+この2つは互いに独立しているのでどちらからでも着手できる。
 
 v1 のスコープ（すべて実装対象）:
 
