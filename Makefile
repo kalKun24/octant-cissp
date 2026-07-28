@@ -1,6 +1,6 @@
 # Octant のタスクランナー。CLAUDE.md「コマンド」の一覧を実体化したもの。
 #
-# dev / deploy-dev / tf-plan / tf-apply は後続チケットで実装する。
+# deploy-dev / tf-plan / tf-apply は後続チケットで実装する。
 # 現時点では未実装である旨を表示して異常終了する（嘘の成功を返さないため）。
 
 SHELL := /usr/bin/env bash
@@ -9,6 +9,7 @@ SHELL := /usr/bin/env bash
 API_DIR      := $(CURDIR)/api
 BACKEND_DIR  := $(CURDIR)/backend
 FRONTEND_DIR := $(CURDIR)/frontend
+SCRIPTS_DIR  := $(CURDIR)/scripts
 GOLANGCI_CONFIG := $(CURDIR)/.golangci.yml
 
 # make gen の入力と出力。gen-check はこの出力の差分だけを見る。
@@ -41,6 +42,14 @@ define not_implemented
 	@echo "$(1) は未実装です（$(2) で実装予定）。" >&2
 	@exit 1
 endef
+
+# ---------------------------------------------------------------------------
+# 開発サーバ
+# ---------------------------------------------------------------------------
+
+.PHONY: dev
+dev: ## エミュレータ（Auth 9099 / Firestore 8808）と API と Vite を同時起動する
+	$(SCRIPTS_DIR)/dev.sh
 
 # ---------------------------------------------------------------------------
 # セットアップ
@@ -147,6 +156,12 @@ fmt-front: ## フロントを prettier で整形する
 test: ## backend の全テストを実行する
 	cd $(BACKEND_DIR) && go test ./...
 
+.PHONY: test-integration
+test-integration: ## Auth エミュレータを起動して統合テストを実行する
+	@# 統合テストはエミュレータ前提のため、環境変数が無ければ自分で skip する。
+	@# make test には含めない（CI と手元でエミュレータの起動条件が揃わないため）。
+	$(SCRIPTS_DIR)/test-integration.sh
+
 .PHONY: test-front
 test-front: ## frontend のテスト（Vitest）を実行する
 	$(call require_frontend)
@@ -171,10 +186,6 @@ build-api: ## API コンテナをビルドする
 # ---------------------------------------------------------------------------
 # 未実装（後続チケットで実装する）
 # ---------------------------------------------------------------------------
-
-.PHONY: dev
-dev: ## [未実装] エミュレータと API と Vite を同時起動する
-	$(call not_implemented,make dev,TICKET-003 認証基盤)
 
 .PHONY: deploy-dev
 deploy-dev: ## [未実装] dev 環境へ手動デプロイする
