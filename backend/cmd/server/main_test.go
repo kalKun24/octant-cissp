@@ -289,8 +289,16 @@ func TestRequestIDIsNotTakenFromClient(t *testing.T) {
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 
+	return newTestRouterWithPublicRoutes(t, publicRouteEntries)
+}
+
+// newTestRouterWithPublicRoutes は免除リストを差し替えたルータを作る。
+// 免除が効いていない場合の挙動を検証するために使う。
+func newTestRouterWithPublicRoutes(t *testing.T, publicEntries []string) http.Handler {
+	t.Helper()
+
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	router, err := newRouter(logger, &config.Config{Revision: "test-revision"}, stubAuthenticator{})
+	router, err := newRouter(logger, &config.Config{Revision: "test-revision"}, stubAuthenticator{}, publicEntries)
 	if err != nil {
 		t.Fatalf("ルータの組み立てに失敗しました: %v", err)
 	}

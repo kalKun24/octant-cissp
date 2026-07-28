@@ -92,7 +92,7 @@ func run() error {
 		return fmt.Errorf("認証の初期化に失敗しました: %w", err)
 	}
 
-	router, err := newRouter(logger, cfg, authenticator)
+	router, err := newRouter(logger, cfg, authenticator, publicRouteEntries)
 	if err != nil {
 		return fmt.Errorf("ルータの組み立てに失敗しました: %w", err)
 	}
@@ -235,8 +235,18 @@ func logStartupPolicy(ctx context.Context, logger *slog.Logger, cfg *config.Conf
 // **認証ミドルウェアだけはここに置かない。** 生成コードの Middlewares へ渡し、
 // ルート照合の後に走らせる（免除判定に chi の RoutePattern が要るため。
 // 詳細は middleware.PublicRoutes のコメント）。
-func newRouter(logger *slog.Logger, cfg *config.Config, authenticator middleware.Authenticator) (http.Handler, error) {
-	public, err := middleware.NewPublicRoutes(publicRouteEntries...)
+//
+// publicEntries を引数で受けるのは、テストが**免除リストを空にしたルータ**を
+// 組み立てられるようにするため。免除が効いていない状態で /api/health が
+// 401 になることを固定でき、免除の分岐が実際に働いていることを検証できる。
+// 本番の値は publicRouteEntries 1箇所だけ。
+func newRouter(
+	logger *slog.Logger,
+	cfg *config.Config,
+	authenticator middleware.Authenticator,
+	publicEntries []string,
+) (http.Handler, error) {
+	public, err := middleware.NewPublicRoutes(publicEntries...)
 	if err != nil {
 		return nil, fmt.Errorf("認証免除ルートの定義が不正です: %w", err)
 	}

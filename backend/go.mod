@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	firebase.google.com/go/v4 v4.21.0
 	github.com/go-chi/chi/v5 v5.3.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

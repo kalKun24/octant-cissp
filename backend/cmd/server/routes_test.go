@@ -99,6 +99,65 @@ func TestNonPublicRoutesRequireAuth(t *testing.T) {
 	}
 }
 
+// TestRoutesRequireAuthWhenNotExempt は、免除リストを空にすると
+// /api/health が 401 になることを固定する。
+//
+// TestNonPublicRoutesRequireAuth は現時点では全ルートが免除対象のため、
+// **「免除されていないルートは 401」側の分岐を一度も実行しない**。
+// つまり、認証ミドルウェアが実際にリクエストを止められるのかを
+// あのテストだけでは確認できていない。ここで免除リストを空にすることで、
+// 免除が外れたときに確かに認証が要求されることを直接確かめる。
+//
+// このテストが落ちるのは、認証ミドルウェアが生成コードの Middlewares から
+// 外れた場合や、IsExempt が常に true を返すようになった場合。
+// どちらも全エンドポイントが無認証になる致命的な退行である。
+func TestRoutesRequireAuthWhenNotExempt(t *testing.T) {
+	t.Parallel()
+
+	routes := registeredRoutes(t)
+	if len(routes) == 0 {
+		t.Fatal("ルートが1つも登録されていません")
+	}
+
+	// 免除リストの与え方を2通り試す。**両方に意味がある。**
+	//
+	//   - 空の免除リストは IsExempt の「そもそも免除が無い」早期 return を通る。
+	//     認証ミドルウェアがそのルートに適用されていること自体を確かめられる
+	//   - 一致しない免除リストは早期 return を飛ばして**実際の照合処理**を通る。
+	//     照合が常に true を返すような退行はこちらでしか捕まえられない
+	//
+	// 空だけで済ませると、照合のコードが一度も実行されないまま緑になる。
+	lists := []struct {
+		name    string
+		entries []string
+	}{
+		{name: "免除リストが空", entries: nil},
+		{name: "免除リストが一致しない", entries: []string{"GET /api/never-registered"}},
+	}
+
+	for _, list := range lists {
+		for _, route := range routes {
+			t.Run(list.name+"/"+route, func(t *testing.T) {
+				t.Parallel()
+
+				method, path, _ := strings.Cut(route, " ")
+
+				// 本番の publicRouteEntries は使わない。
+				router := newTestRouterWithPublicRoutes(t, list.entries)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), method, path, nil))
+
+				if rec.Code != http.StatusUnauthorized {
+					t.Errorf("%s なのに %s が %d を返しました（401 であるべきです）。\n"+
+						"  認証ミドルウェアがこのルートに適用されていないか、"+
+						"IsExempt が一致しない相手にも true を返しています。",
+						list.name, route, rec.Code)
+				}
+			})
+		}
+	}
+}
+
 // registeredRoutes は実際にルータへ登録されているルートを "METHOD /pattern" で返す。
 func registeredRoutes(t *testing.T) []string {
 	t.Helper()
