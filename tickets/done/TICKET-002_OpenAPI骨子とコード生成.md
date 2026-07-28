@@ -5,10 +5,10 @@
 | 項目 | 内容 |
 |---|---|
 | チケットID | TICKET-002 |
-| ステータス | 🟡 作業中 |
+| ステータス | 🟢 完了 |
 | 作成日 | 2026-07-27 |
 | 着手日 | 2026-07-28 |
-| 完了日 | - |
+| 完了日 | 2026-07-28 |
 | ブランチ名 | `feature/TICKET-002` |
 | PR番号 | #6 |
 | PRリンク | https://github.com/kalKun24/octant-cissp/pull/6 |
@@ -80,3 +80,41 @@ TICKET-001 の QA で指摘され、`openapi.yaml` を書く前に確定させ�
   外部監視ツールや `curl -I` が HEAD を使うため
 - **末尾スラッシュ**: 生成クライアントは常に正規パスを送るため実害がない。
   1リソース1URLを保ち、キャッシュと `openapi.yaml` の一意性を優先する
+
+## 完了時メモ
+
+品質チェックを**3回**実施し（QA Team 2回・単独 Reality Checker 1回）、
+いずれも **CONDITIONAL・🔴/Critical/High はゼロ**。指摘のうち7件を `7630a36` で修正した。
+
+### 着手後に判明して対応したこと
+
+**`/api` 基底パス**: Firebase Hosting の rewrites はパスを書き換えずに転送するため、
+Cloud Run が受け取るのは `/api/health`。基底パスを持たせないと **TICKET-005 で
+デプロイした瞬間に全エンドポイントが 404** になり、ローカルでは Vite のプロキシに
+隠れて気づかない。`servers` 側に基底を持たせ `paths` は `/health` のままにした。
+
+**API First が片方向だった**: `openapi.yaml` を触らずに `r.Get()` を手書きしても
+`gen-check` も lint もテストも検知しなかった。`chi.Walk` で登録ルートを照合する
+`routes_test.go` を追加して塞いだ（手書きルートを注入して FAIL を実測確認）。
+
+**`skip-prune: true` は必須設定だった**: コメントは「生成物であることを示す」と
+書かれていたが事実誤認。`false` にすると `Envelope` / `CursorPage` / `NextCursor` /
+`Limit` / `Cursor` が刈られ、`dto.Envelope` の型エイリアスが undefined でビルド不能。
+
+**カーソルの `examples` が危険だった**: `eyJ1cGRhdGVkQXQiOiIyMDI2LTA3LTI4In0` は
+base64 デコードで `{"updatedAt":"2026-07-28"}` になる平文 JSON で、**仕様書自身が
+内部識別子の露出と IDOR を招くパターンを手本にしていた**。差し替えて安全要件を明記。
+
+### 未対応（後続チケットへ）
+
+- **TICKET-003**: 認証免除は `RoutePattern()` による fail-closed な allowlist にする
+  （パス文字列比較にしない）。`Cache-Control: no-store` と `nosniff` を認証導入前に入れる。
+  `openapi.yaml` に `securitySchemes: bearerAuth` + トップレベル `security` を追加し
+  `/health` だけ `security: []` で opt-out（書き忘れが検知できる fail-closed 運用にする）
+- **TICKET-005**: Actions を SHA ピン留めする（**WIF を足す前に必須**）。
+  **WIF ワークフローで `~/go/bin` キャッシュを共有しない**。
+  Cloud Run のプローブ path は `/api/health`。
+  `firebase.json` の rewrites は `/api/**` を SPA フォールバックより**前**に置く
+- **TICKET-006**: 受け入れ条件に反映済み（`limit` の `default: 50` が効かない件ほか）
+- 任意: HEAD の `Content-Length`、`OPTIONS *` の封筒化、`parameterErrorHandler` の
+  ログから生入力を除く、npm の dev 依存 high 4件の受容記録
