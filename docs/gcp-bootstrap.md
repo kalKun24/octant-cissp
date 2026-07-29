@@ -165,8 +165,20 @@ done
 
 ```bash
 gcloud auth application-default login
+
+# 既定プロジェクトとクォータプロジェクトを dev に向ける。
+# **--project を付け忘れたコマンドの着地点を安全側にするため。**
+# 既定のままだと旧 octant-cissp（稼働中）に向かい、削除系の誤爆が事故になる。
+gcloud config set project octant-dev
+gcloud auth application-default set-quota-project octant-dev
 ```
 
 Terraform は ADC を使うため、これを済ませておく必要があります。
 **初回の `apply` は手元の ADC で行います**（CI から動かすための WIF を
 作るのが Terraform 自身であり、鶏と卵になるため）。
+
+> `gcloud auth application-default login` は**クォータプロジェクトを
+> gcloud の既定プロジェクトに合わせて自動設定します。** 既定が旧プロジェクトのままだと
+> ADC もそちらを向くため、上記2行で明示的に付け替えています。
+> Terraform 側では `billing_project` と `user_project_override` を
+> プロバイダに設定し、ADC の設定に依存しない形にします（TICKET-004）。
