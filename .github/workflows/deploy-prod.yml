@@ -34,3 +34,7 @@ jobs:
       env: prod
       workload_identity_provider: projects/540828365194/locations/global/workloadIdentityPools/github/providers/github-actions
       service_account: octant-ci@octant-prod.iam.gserviceaccount.com
+      # **承認者付きの Environment。** main への push で自動的に走り出さず、
+      # kalKun24 の承認を待ってからデプロイジョブが動く。
+      # デプロイ可能ブランチも Environment 側で main のみに制限してある。
+      environment: prod

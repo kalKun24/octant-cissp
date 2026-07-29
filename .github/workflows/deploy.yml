@@ -24,11 +24,21 @@ on:
         description: "借用するデプロイ用サービスアカウント"
         required: true
         type: string
+      environment:
+        description: >-
+          デプロイ先として使う GitHub Environment。
+          prod は承認者と対象ブランチ（main のみ）を設定した環境を指定し、**人の承認を挟む**。
+          dev は空のまま（開発の流れを止めないため）。
+        required: false
+        default: ""
+        type: string
 
 env:
   GO_VERSION: "1.26"
   NODE_VERSION: "24"
-  FIREBASE_TOOLS_VERSION: "15"
+  # **exact 指定にする。** 浮動レンジだと、デプロイ資格情報を持つジョブに
+  # 入る CLI のバージョンが実行のたびに変わりうる。
+  FIREBASE_TOOLS_VERSION: "15.24.0"
 
 jobs:
   # -------------------------------------------------------------------------
@@ -77,6 +87,12 @@ jobs:
       - name: make gen の差分検証（API First）
         run: make gen-check
 
+      # **ここが Firestore の防壁の検査**（デプロイ権限を持たない側で行う）。
+      # デプロイジョブは firebaserules.admin を持ち、リポジトリの firestore.rules を
+      # そのままリリースする。全拒否からの退行と、CSP のハッシュずれをここで落とす。
+      - name: 設定のゲート（全拒否ルール / CSP のハッシュ）
+        run: make check-config
+
       - name: lint（golangci-lint / eslint / tsc --noEmit）
         run: make lint
 
@@ -101,6 +117,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # prod は承認者付きの Environment を指定して**人の承認を挟む**。
+    # 対象ブランチも Environment 側で main のみに制限してある。
+    # dev は空文字を渡す（Environment を使わない = 承認ゲート無し）。
+    environment: ${{ inputs.environment }}
+
     permissions:
       # WIF の OIDC トークンを取得するために要る。**ここだけ書き込み権限。**
       id-token: write
@@ -115,6 +136,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # ------------------------------------------------------------------
+      # **サードパーティのコードを入れる作業は、認証より前に済ませる。**
+      #
+      # 認証後は octant-ci の資格情報がこのジョブの環境にある。その状態で
+      # npm の postinstall を走らせると、依存 1 つの侵害が
+      # 「octant-ci になりすまして任意のイメージを本番へ出す」ことに直結する。
+      # 導入自体を前倒しし、さらに postinstall を実行しない。
+      # ------------------------------------------------------------------
+      - name: 依存を取得（postinstall を実行しない）
+        run: make setup-front
+
+      - name: firebase-tools を導入（バージョン固定）
+        run: npm install -g --ignore-scripts firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
+
       # キーレス認証。JSON キーは発行していないので Secrets には何も入っていない。
       # この step が書き出す認証情報は「外部アカウント設定」であり鍵ではない。
       - name: GCP に認証（Workload Identity Federation）
@@ -125,12 +160,6 @@ jobs:
 
       - name: gcloud をセットアップ
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
-
-      - name: 依存を取得（フロントのビルドに要る）
-        run: make setup-front
-
-      - name: firebase-tools を導入
-        run: npm install -g firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
 
       # イメージのビルドと push、Cloud Run の更新、firestore.rules と Hosting の
       # デプロイ、Hosting 経由の疎通確認までをまとめて行う。
