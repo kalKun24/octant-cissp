@@ -95,8 +95,12 @@ Terraform の `cloud-run-service` モジュールで**必ず注入すること�
 
 - CLAUDE.md「インフラ・デプロイ」「コスト規約」
 - **前提: TICKET-016（GCP ブートストラップ）が完了していること**
-- GCPプロジェクト: dev `octant-dev` / prod `octant`。リージョン `asia-northeast1`。
-  **ただし TICKET-016 で実際に取得できた ID を正とする**（`octant` は全世界一意のため取れない可能性がある）
+- GCPプロジェクト: dev **`octant-dev`** / prod **`octant-prod`**。リージョン `asia-northeast1`
+  （TICKET-016 で作成済み。`octant` は取得できなかったため `octant-prod` になった）
+- tfstate バケットは **`gs://octant-dev-tfstate`** / **`gs://octant-prod-tfstate`**（作成済み）
+- **旧プロジェクト `octant-cissp` には触れない**（旧 octant が稼働中。新規2つと分離済み）
+- **Firestore はこの Terraform で作る。** TICKET-016 では意図的に未作成にしてある
+  （コンソールで先に作るとリージョンと PITR が管理外になるため）
 - **`min_instances = 1` にするとアイドル課金で月2,000円規模**になる。0 を厳守
 - 外部ロードバランサは使わない（転送ルールだけで月約2,800円の固定費が出るため）
 - 後続: **TICKET-005（CI/CD）はこのチケットの `apply` 完了を前提にしている**
