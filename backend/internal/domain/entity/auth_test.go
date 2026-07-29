@@ -101,9 +101,10 @@ func TestEmailAllowlistAllows(t *testing.T) {
 		{name: "内部の空白は吸収しない", email: "allowed @example.com", want: false},
 		{name: "NUL は吸収しない", email: "allowed@example.com\x00", want: false},
 
-		// Unicode 対応の小文字化（strings.ToLower）は U+212A（ケルビン記号）を
-		// 'k' へ畳む。それに頼ると、許可アドレスの k を U+212A に差し替えた
-		// 別アカウントが一致しうる。小文字化は ASCII の範囲だけで行う。
+		// 非 ASCII は一律で拒否する。
+		// **畳み込みそのものはここでは検証できない** — 基底が allowed@example.com で
+		// 'k' を含まないため、U+212A に差し替えても畳んだ結果が元と一致しない。
+		// ケルビン記号の畳み込みは TestAllowsRejectsKelvinSignHomoglyph で検証する。
 		{name: "ケルビン記号は k に畳まない", email: "allowed@example.\u212aom", want: false},
 		{name: "非 ASCII を含むアドレスは拒否する", email: "allowed\u00e9@example.com", want: false},
 	}
@@ -175,5 +176,49 @@ func TestZeroEmailAllowlistDeniesEveryone(t *testing.T) {
 	}
 	if zero.Size() != 0 {
 		t.Errorf("Size(): got %d, want 0", zero.Size())
+	}
+}
+
+// TestAllowsRejectsKelvinSignHomoglyph は、Unicode 対応の小文字化に頼ると成立する
+// なりすましが塞がれていることを確かめる。
+//
+// strings.ToLower は U+212A（ケルビン記号）を 'k' へ畳む。許可アドレスに 'k' が
+// 含まれる場合、その 'k' を U+212A に差し替えた**別アカウント**が一致しうる。
+// 見た目がほぼ同じなのでログを見ても気づけない。
+//
+// **基底に 'k' を含めることがこのテストの要件。** 含まないアドレスで別の文字を
+// U+212A に差し替えても、畳んだ結果が元と一致しないため、実装を
+// strings.ToLower に戻しても素通りしてしまう（実際に変異テストで確認済み）。
+func TestAllowsRejectsKelvinSignHomoglyph(t *testing.T) {
+	t.Parallel()
+
+	// 'k' を含むことが要件。
+	const base = "kal@example.com"
+
+	allowed, err := NewEmailAllowlist(base)
+	if err != nil {
+		t.Fatalf("許可リストの作成に失敗しました: %v", err)
+	}
+
+	tests := []struct {
+		name  string
+		email string
+		want  bool
+	}{
+		{name: "基底そのものは通す", email: base, want: true},
+		{name: "ASCII の大文字 K は吸収する", email: "Kal@example.com", want: true},
+		{name: "全部大文字も吸収する", email: "KAL@EXAMPLE.COM", want: true},
+		{name: "ケルビン記号 U+212A は k に畳まない", email: "\u212aal@example.com", want: false},
+		{name: "大文字の中に混ざったケルビン記号も畳まない", email: "\u212aAL@EXAMPLE.COM", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := allowed.Allows(tt.email); got != tt.want {
+				t.Errorf("Allows(%x): got %v, want %v", tt.email, got, tt.want)
+			}
+		})
 	}
 }

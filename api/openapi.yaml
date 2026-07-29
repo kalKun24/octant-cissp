@@ -68,7 +68,8 @@ paths:
         サーバが応答可能かを返します。Cloud Run と GCP ロードバランサの
         ヘルスチェックが使うため、認証を要しません。
       # トップレベルの security を打ち消して認証を免除する。
-      # サーバ側の免除 allowlist（backend/internal/interface/authroute）と対で維持すること。
+      # サーバ側の免除 allowlist（backend/cmd/server/main.go の publicRouteEntries）と
+      # 対で維持すること。両者の一致は TestPublicRoutesMatchOpenAPISecurity が検証する。
       security: []
       responses:
         '200':
