@@ -2,8 +2,8 @@
 
 GCP をゼロから立ち上げ、Terraform が動き出せる状態にするまでの手順（TICKET-016）。
 
-**この手順は前半（自動）と後半（手動）に分かれます。** 後半は Firebase の仕様上
-コンソールでしか行えない操作です。
+**ブラウザでの操作が必要なのは「Google サインインの有効化」1箇所だけです。**
+残りはすべて `gcloud` と `firebase` CLI で完結します。
 
 ## 実施済みの構成（2026-07-29）
 
@@ -48,23 +48,23 @@ BILLING_ACCOUNT=... PROD_PROJECT=my-prod DEV_PROJECT=my-dev scripts/bootstrap-gc
 
 ---
 
-## 後半: コンソールでの作業
+## 後半: Firebase の設定
 
-**ここからはブラウザでの操作が必要です。** Firebase Auth の Google プロバイダは
-OAuth クライアントを自動生成するため、API だけでは完結しません。
+**ブラウザでの操作が必要なのは「Google サインインの有効化」だけです。**
+残りは `firebase` CLI で完結します。
 
-### 1. Firebase をプロジェクトに追加
+### 1. Firebase をプロジェクトに追加（CLI で可）
 
-https://console.firebase.google.com
+```bash
+firebase projects:addfirebase octant-prod
+firebase projects:addfirebase octant-dev
+```
 
-1. **「プロジェクトを追加」**
-2. **既存の GCP プロジェクトを選ぶ**（`octant-prod` / `octant-dev`）
-   - **⚠ Firebase コンソールから新規作成しないこと。** GCP プロジェクト ID が
-     自動採番され、作成済みのプロジェクトと別物になります
-3. Google アナリティクスは**無効**でよい（このアプリでは使いません）
-4. **prod と dev の両方で行う**
+> コンソールから行う場合は**必ず「既存の GCP プロジェクトを選ぶ」**こと。
+> Firebase コンソールで新規作成すると GCP プロジェクト ID が自動採番され、
+> 作成済みのプロジェクトと別物になります。
 
-### 2. Authentication で Google サインインを有効化
+### 2. Authentication で Google サインインを有効化（**ここだけブラウザ必須**）
 
 各プロジェクトで:
 
@@ -74,38 +74,36 @@ https://console.firebase.google.com
 
 これで OAuth クライアントが自動生成されます。
 
-### 3. 承認済みドメインの確認
+### 3. 承認済みドメインの確認（CLI で可）
 
-**Authentication** → **Settings** → **承認済みドメイン**
+```bash
+TOKEN=$(gcloud auth print-access-token)
+for p in octant-prod octant-dev; do
+  curl -s -H "Authorization: Bearer $TOKEN" -H "x-goog-user-project: $p" \
+    "https://identitytoolkit.googleapis.com/admin/v2/projects/$p/config" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin).get('authorizedDomains'))"
+done
+```
 
-既定で以下が入っているはずです。無ければ追加します。
+`localhost` / `<project-id>.firebaseapp.com` / `<project-id>.web.app` が
+既定で入ります。**入っていないドメインからはサインインできません。**
 
-- `localhost`
-- `<project-id>.firebaseapp.com`
-- `<project-id>.web.app`
+> **`x-goog-user-project` ヘッダが必須です。** 付けないと
+> 「quota project が未設定」という 403 になります（API 無効と紛らわしい）。
 
-> 独自ドメインを使う場合はここに追加します。**入っていないドメインからは
-> サインインできません。**
+### 4. ウェブアプリを登録して firebaseConfig を取得（CLI で可）
 
-### 4. ウェブアプリを登録して firebaseConfig を取得
+```bash
+firebase apps:create WEB octant-web --project octant-dev
+firebase apps:list WEB --project octant-dev        # appId を確認
+firebase apps:sdkconfig WEB <appId> --project octant-dev
+```
 
-各プロジェクトで:
+**Hosting サイトはプロジェクトに Firebase を追加した時点で自動作成されます**
+（`octant-dev` / `octant-prod`）。確認は次のとおり。
 
-1. **プロジェクトの設定**（歯車）→ **マイアプリ** → **ウェブ**（`</>` アイコン）
-2. アプリのニックネームを入力（例: `octant-web`）
-3. **「このアプリの Firebase Hosting も設定します」にチェックを入れる**
-   （Hosting サイトが同時に作られます）
-4. 表示された `firebaseConfig` の値を控える
-
-```js
-const firebaseConfig = {
-  apiKey: "AIza...",
-  authDomain: "octant-prod.firebaseapp.com",
-  projectId: "octant-prod",
-  storageBucket: "octant-prod.firebasestorage.app",
-  messagingSenderId: "...",
-  appId: "1:...:web:..."
-};
+```bash
+firebase hosting:sites:list --project octant-dev
 ```
 
 ### 5. 取得した値の置き場
