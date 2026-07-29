@@ -56,8 +56,59 @@ AR_REPOSITORY="octant"
 HOSTING_SITE="$PROJECT_ID"
 HOSTING_URL="https://${HOSTING_SITE}.web.app"
 
+# この環境に対応するブランチ。手元実行のときだけ照合する。
+if [ "$ENV" = "prod" ]; then
+	EXPECTED_BRANCH="main"
+else
+	EXPECTED_BRANCH="develop"
+fi
+
 : "${GIT_SHA:=$(git rev-parse HEAD)}"
 SHORT_SHA="${GIT_SHA:0:7}"
+
+# **Auth エミュレータの設定を持ち込まない**（TICKET-003 からの申し送り）。
+# エミュレータ接続時は ID トークンの署名検証が省略される。
+# Cloud Run へ渡すことはそもそも無いが、フロントのビルドと firebase CLI が
+# 手元の値を拾わないよう、ここで明示的に落とす。
+unset FIREBASE_AUTH_EMULATOR_HOST
+unset FIRESTORE_EMULATOR_HOST
+
+# ---------------------------------------------------------------------------
+# 手元実行のときだけ効くガード（CI では素通り）
+#
+# **make deploy-dev は「作業ツリー」をビルドする。**
+# 未コミットの差分があると、レビュー済みコミットの SHA を名乗るイメージに
+# 手元の変更が混ざる。CI は常にクリーンなチェックアウトなので、
+# この確認は手元でだけ行う。
+# ---------------------------------------------------------------------------
+
+if [ -z "${CI:-}" ]; then
+	current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+	if ! git diff --quiet || ! git diff --cached --quiet; then
+		echo "エラー: 作業ツリーに未コミットの変更があります。" >&2
+		echo "  イメージは作業ツリーからビルドされるため、コミット ${SHORT_SHA} を名乗る" >&2
+		echo "  イメージに未レビューの変更が入ります。コミットするか退避してください。" >&2
+		exit 1
+	fi
+
+	if [ "$current_branch" != "$EXPECTED_BRANCH" ]; then
+		echo "警告: 現在のブランチは ${current_branch} です（${ENV} の正規のブランチは ${EXPECTED_BRANCH}）。" >&2
+	fi
+
+	if [ "$ENV" = "prod" ]; then
+		echo "" >&2
+		echo "**本番（${PROJECT_ID}）へ手元からデプロイしようとしています。**" >&2
+		echo "  通常は main への push と GitHub の承認を経由してください。" >&2
+		echo "  ブランチ: ${current_branch} / コミット: ${SHORT_SHA}" >&2
+		printf '続けるには環境名を入力してください（prod）: ' >&2
+		read -r confirmation </dev/tty || confirmation=""
+		if [ "$confirmation" != "prod" ]; then
+			echo "中止しました。" >&2
+			exit 1
+		fi
+	fi
+fi
 
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/api:${GIT_SHA}"
 
@@ -100,6 +151,22 @@ gcloud auth print-access-token |
 
 docker push "$IMAGE"
 
+# **タグではなく digest でデプロイする。**
+# CI が持つ roles/artifactregistry.writer は artifactregistry.tags.update を含み、
+# タグの付け替えができる。タグ指定のままだと「検証したイメージ」と
+# 「実際に起動するイメージ」がずれる余地が残るため、push 直後に digest を
+# 解決し、以降は digest だけを使う。
+image_digest="$(gcloud artifacts docker images describe "$IMAGE" \
+	--project "$PROJECT_ID" --format='value(image_summary.digest)')"
+
+if [ -z "$image_digest" ]; then
+	echo "エラー: push したイメージの digest を解決できませんでした。" >&2
+	exit 1
+fi
+
+IMAGE_REF="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/api@${image_digest}"
+echo "==> digest: ${image_digest}"
+
 # ---------------------------------------------------------------------------
 # 2. Cloud Run の更新
 #
@@ -111,7 +178,7 @@ echo "==> Cloud Run を更新します"
 gcloud run services update "$SERVICE" \
 	--project "$PROJECT_ID" \
 	--region "$REGION" \
-	--image "$IMAGE" \
+	--image "$IMAGE_REF" \
 	--revision-suffix "$REVISION_SUFFIX" \
 	--quiet
 
@@ -138,6 +205,42 @@ echo "==> リビジョン ${latest_ready} が準備完了です"
 # 秘密情報ではないがプロジェクト固有のため、リポジトリにも GitHub Secrets にも
 # 実値を置かず、Firebase 側を唯一の正とする（アプリを作り直しても追従する）。
 # ---------------------------------------------------------------------------
+
+# 手元の VITE_* と frontend/.env を**バンドルに焼き込ませない**。
+#
+# Vite は VITE_ で始まる環境変数と frontend/.env* を読み、値をビルド結果へ
+# 埋め込む。手元で make deploy-dev を打つと、開発者の設定
+# （VITE_USE_AUTH_EMULATOR=true など）がそのまま配信物に入りうる。
+# 環境変数は全て落とし、.env 系は一時的に退避してビルドする。
+for name in $(env | sed -n 's/^\(VITE_[A-Za-z0-9_]*\)=.*/\1/p'); do
+	unset "$name"
+done
+
+VITE_ENV_BACKUP="$(mktemp -d)"
+restore_vite_env() {
+	if [ -d "$VITE_ENV_BACKUP" ]; then
+		for saved in "$VITE_ENV_BACKUP"/*; do
+			[ -e "$saved" ] || continue
+			mv -- "$saved" "${REPO_ROOT}/frontend/$(basename "$saved")"
+		done
+		rmdir "$VITE_ENV_BACKUP" 2>/dev/null || true
+	fi
+}
+
+cleanup() {
+	docker_logout
+	restore_vite_env
+}
+trap cleanup EXIT
+
+for env_file in "${REPO_ROOT}/frontend/".env "${REPO_ROOT}/frontend/".env.*; do
+	[ -e "$env_file" ] || continue
+	case "$(basename "$env_file")" in
+	.env.example) continue ;;
+	esac
+	echo "==> $(basename "$env_file") を一時退避します（ビルドに混ぜないため）"
+	mv -- "$env_file" "$VITE_ENV_BACKUP/"
+done
 
 echo "==> firebaseConfig を取得します（${PROJECT_ID}）"
 sdkconfig="$(firebase apps:sdkconfig WEB --project "$PROJECT_ID" --json)"
@@ -180,6 +283,10 @@ export VITE_USE_AUTH_EMULATOR=false
 
 echo "==> フロントエンドをビルドします"
 make build-front
+
+# ビルド結果のインラインスクリプトが CSP のハッシュと一致することを確かめる。
+# ずれるとブラウザが黙って実行を止めるため、配る前に落とす。
+"${REPO_ROOT}/scripts/check-csp-hashes.sh" "${REPO_ROOT}/frontend/dist/index.html"
 
 # Hosting の公開ディレクトリは firebase.json のある場所より外を指せない
 # （firebase CLI が "outside of project directory" で拒否する）。
