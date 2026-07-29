@@ -75,3 +75,55 @@ gcloud scheduler jobs run firestore-weekly-export \
   --location asia-northeast1 --project octant-dev     # 手動実行
 gcloud firestore import gs://octant-dev-backups/<日時フォルダ> --project octant-dev
 ```
+
+## Terraform 管理外の設定（手作業で維持する）
+
+以下は Firebase / GCP が自動作成するため Terraform が管理していない。
+**`terraform plan` は差分を検出しないので、変わっても気づけない。**
+定期的に、あるいはプロジェクトを作り直したときに手で確認すること。
+
+### firebase-adminsdk SA から剥奪済みのロール
+
+Firebase をプロジェクトに追加すると `firebase-adminsdk-fbsvc@` が作られ、
+**`roles/iam.serviceAccountTokenCreator` がプロジェクトレベルで付与される。**
+
+このロールは `octant-api` / `octant-backup` を含む**プロジェクト内の全 SA を
+借用できる**ことを意味する。この SA はアプリから一切使っていない
+（Cloud Run 上の Firebase Admin SDK は ADC ＝ `octant-api` SA で動き、
+ID トークンの検証は公開鍵だけで完結する）にもかかわらず、
+残しておくと「認可はアプリ1箇所」という設計を迂回できる待機中の攻撃面になる。
+
+**2026-07-30 に dev / prod の両方から剥奪済み。** 剥奪後も統合テストと
+`/api/health` は正常だった。
+
+```bash
+# 確認（0 件が正しい）
+for p in octant-dev octant-prod; do
+  gcloud projects get-iam-policy "$p" --flatten="bindings[].members" \
+    --filter="bindings.role:roles/iam.serviceAccountTokenCreator" \
+    --format='value(bindings.members)'
+done
+
+# 再付与されていた場合の剥奪
+gcloud projects remove-iam-policy-binding <project> \
+  --member="serviceAccount:firebase-adminsdk-fbsvc@<project>.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
+```
+
+**組織が無いため `constraints/iam.disableServiceAccountKeyCreation` を強制できない。**
+この SA の JSON キーが1つ漏れると Firestore の全読み書き・ルールの書き換え・
+任意ユーザーの作成がすべて可能になる。**キーを発行しないこと。**
+
+### Firestore のセキュリティルール
+
+`firebase deploy` でリリースするため Terraform 管理外。
+
+```bash
+make rules-deploy ENV=dev    # デプロイ
+make rules-check  ENV=dev    # リリース済みか検証
+```
+
+**ruleset がリリースされていない状態でも Firestore は全拒否する**が、
+それは既定の副作用であってコードで固定された保証ではない。
+Firebase コンソールで Firestore のページを開くと
+「テストモード（30日間 allow all）」を提示され、押した瞬間に全公開になる。
