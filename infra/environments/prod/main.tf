@@ -56,6 +56,9 @@ module "octant" {
 
   log_level = "info"
 
+  # **prod へデプロイできるのは main だけ。** ここを広げない。
+  ci_allowed_refs = ["refs/heads/main"]
+
   billing_account           = local.billing_account
   budget_amount             = 1000
   budget_notification_email = var.budget_notification_email

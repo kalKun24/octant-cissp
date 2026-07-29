@@ -126,6 +126,28 @@ module "cloud_run" {
 }
 
 # ---------------------------------------------------------------------------
+# CI/CD
+# ---------------------------------------------------------------------------
+
+module "ci" {
+  source = "../ci-workload-identity"
+
+  project_id = var.project_id
+  env        = var.env
+  region     = var.region
+
+  github_repository = var.github_repository
+  allowed_refs      = var.ci_allowed_refs
+
+  # デプロイ権限はこの 2 つのリソースにだけ紐づける
+  # （権限設計の理由はモジュール側のコメントを参照）。
+  cloud_run_service_name     = module.cloud_run.service_name
+  runtime_service_account_id = google_service_account.api.name
+
+  artifact_registry_repository_id = module.artifact_registry.repository_id
+}
+
+# ---------------------------------------------------------------------------
 # 運用
 # ---------------------------------------------------------------------------
 

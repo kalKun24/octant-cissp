@@ -51,6 +51,21 @@ variable "log_level" {
   default     = "info"
 }
 
+variable "github_repository" {
+  description = "デプロイ元の GitHub リポジトリ（owner/repo）。**ここに書いたリポジトリだけが WIF で認証できる。**"
+  type        = string
+  default     = "kalKun24/octant-cissp"
+}
+
+variable "ci_allowed_refs" {
+  description = <<-EOT
+    この環境へのデプロイを許可するブランチの ref。
+    dev は refs/heads/develop、prod は refs/heads/main。
+    **一時的な検証で広げたら、検証が終わったら必ず戻すこと。**
+  EOT
+  type        = list(string)
+}
+
 variable "billing_account" {
   description = "予算アラートを作る課金アカウント ID。"
   type        = string

@@ -56,6 +56,10 @@ module "octant" {
   # dev は挙動の確認が目的なのでログを詳しくする。
   log_level = "debug"
 
+  # dev へデプロイできるのは develop だけ。
+  # **一時的に検証ブランチを足したら、検証が終わったら必ず戻すこと。**
+  ci_allowed_refs = ["refs/heads/develop"]
+
   billing_account           = local.billing_account
   budget_amount             = 1000
   budget_notification_email = var.budget_notification_email

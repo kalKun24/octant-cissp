@@ -23,6 +23,21 @@ output "artifact_registry_repository_url" {
   value       = module.artifact_registry.repository_url
 }
 
+output "ci_workload_identity_provider" {
+  description = "GitHub Actions の認証に使う WIF プロバイダのリソース名。"
+  value       = module.ci.workload_identity_provider
+}
+
+output "ci_service_account_email" {
+  description = "GitHub Actions が借用するデプロイ用サービスアカウント。"
+  value       = module.ci.service_account_email
+}
+
+output "ci_allowed_principals" {
+  description = "デプロイ用 SA の借用を許可した principalSet（リポジトリ × ブランチ）。"
+  value       = module.ci.allowed_principals
+}
+
 output "attachments_bucket_name" {
   description = "添付画像バケット。"
   value       = module.storage.attachments_bucket_name

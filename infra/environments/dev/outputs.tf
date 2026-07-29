@@ -32,3 +32,18 @@ output "firestore_backup_job" {
   description = "Firestore の週次エクスポートジョブ。"
   value       = module.octant.firestore_backup_job
 }
+
+output "ci_workload_identity_provider" {
+  description = "GitHub Actions の認証に使う WIF プロバイダ。"
+  value       = module.octant.ci_workload_identity_provider
+}
+
+output "ci_service_account_email" {
+  description = "GitHub Actions が借用するデプロイ用サービスアカウント。"
+  value       = module.octant.ci_service_account_email
+}
+
+output "ci_allowed_principals" {
+  description = "デプロイ用 SA の借用を許可した principalSet。"
+  value       = module.octant.ci_allowed_principals
+}
