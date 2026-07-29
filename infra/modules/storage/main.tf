@@ -91,10 +91,29 @@ resource "google_storage_bucket_iam_member" "attachments_object_admin" {
   member = each.value
 }
 
-resource "google_storage_bucket_iam_member" "backups_admin" {
+# バックアップ書き込みに必要な最小権限。
+#
+# **roles/storage.admin を使わない。** バケットスコープでも
+# storage.buckets.setIamPolicy / objects.delete / buckets.delete を含むため、
+# この SA が侵害されると次の連鎖が成立する:
+#   1. 全バックアップを削除（ソフト削除もバージョニングも無いため復旧不能）
+#   2. setIamPolicy で外部アカウントに閲覧権を付与しノート本文を持ち出す
+#      （public_access_prevention は allUsers を防ぐが特定アカウントは防げない）
+#
+# Firestore の exportDocuments に実際に要るのは
+# 「オブジェクトの作成」と「バケットの存在確認」だけ。
+resource "google_storage_bucket_iam_member" "backups_object_creator" {
   for_each = toset(var.backups_admin_members)
 
   bucket = google_storage_bucket.backups.name
-  role   = "roles/storage.admin"
+  role   = "roles/storage.objectCreator"
+  member = each.value
+}
+
+resource "google_storage_bucket_iam_member" "backups_bucket_reader" {
+  for_each = toset(var.backups_admin_members)
+
+  bucket = google_storage_bucket.backups.name
+  role   = "roles/storage.legacyBucketReader" # storage.buckets.get のみ
   member = each.value
 }

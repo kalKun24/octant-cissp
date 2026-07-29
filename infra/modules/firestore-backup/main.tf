@@ -6,10 +6,30 @@
 # 復元:
 #   gcloud firestore import gs://<バケット>/<日時フォルダ> --project <project>
 
-# エクスポートを実行する権限。プロジェクト単位でしか付けられないロール。
-resource "google_project_iam_member" "import_export_admin" {
+# エクスポート専用のカスタムロール。
+#
+# **roles/datastore.importExportAdmin を使わない。** あれは import を含むため、
+# この SA が侵害されると攻撃者が用意した GCS バケットから import を実行して
+# **Firestore の中身を丸ごと差し替え**られる。
+# delete_protection_state はデータベースの削除を防ぐが、ドキュメントの
+# 上書きは防がない。週次バックアップという用途に import 権限は過剰。
+resource "google_project_iam_custom_role" "firestore_exporter" {
+  project     = var.project_id
+  role_id     = "octantFirestoreExporter"
+  title       = "Octant Firestore Exporter"
+  description = "Firestore のエクスポートだけを行う。import は含まない。"
+
+  permissions = [
+    "datastore.databases.export",
+    "datastore.databases.getMetadata",
+    "datastore.operations.get",
+    "datastore.operations.list",
+  ]
+}
+
+resource "google_project_iam_member" "firestore_exporter" {
   project = var.project_id
-  role    = "roles/datastore.importExportAdmin"
+  role    = google_project_iam_custom_role.firestore_exporter.id
   member  = "serviceAccount:${var.service_account_email}"
 }
 
@@ -54,5 +74,5 @@ resource "google_cloud_scheduler_job" "firestore_export" {
   }
 
   # 権限が無い状態で最初の実行を迎えないよう、IAM の付与を先に済ませる。
-  depends_on = [google_project_iam_member.import_export_admin]
+  depends_on = [google_project_iam_member.firestore_exporter]
 }
