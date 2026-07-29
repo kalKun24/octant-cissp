@@ -61,21 +61,20 @@ Firestore の `/notes/{noteId}` に 1ノート = 1ドキュメントで保存す
 - 同時編集はノート単位で後勝ち
 - **`Offset()` を使わない**（読み飛ばした分も課金される）
 
-### TICKET-003 からの申し送り: 環境に Java が無い
+### TICKET-003 からの申し送り: Firestore エミュレータの前提
 
-**このチケットで初めて Firestore エミュレータが必要になる。**
-Firestore エミュレータは JRE を要求するが、**現在の開発環境に Java が入っていない。**
+**このチケットで初めて Firestore エミュレータを実際に使う。**
 
-- **`make dev` は何も起動せずに即異常終了する**（`エラー: java が見つかりません`）。
-  `scripts/dev.sh` は起動処理の前に前提コマンドを確認しており、
-  `require java` がそこで止めるため、Auth エミュレータも API も Vite も立ち上がらない。
-  「途中まで起動する」わけではないので、Java を入れるまでローカル開発は始められない
-- `make test-integration` は現在 `--only auth` なので動いている。
-  **Firestore を足す際に `--only auth,firestore` へ変更すると Java が要る**
-- CI（ubuntu-latest）には Java が入っているが、**ワークフローに JRE のセットアップを
-  明示的に追加する**こと（現在は不要なので入れていない）
-
-着手時にまず `default-jre` 相当を導入し、`make dev` が最後まで通ることを確認すること。
+- ローカル環境には **Java 25（`default-jre-headless`）が導入済み**（2026-07-29）。
+  `make dev` が Auth（9099）・Firestore（8808）・API（8080）・Vite（5173）の
+  4つを起動し、Ctrl-C で4つとも停止することを実測確認済み
+- `make test-integration` は現在 **`--only auth`**。
+  **Firestore を使うテストを足す際は `scripts/test-integration.sh` を
+  `--only auth,firestore` に変更し、`FIRESTORE_EMULATOR_HOST` を渡すこと**
+- **CI に JRE のセットアップを追加する必要がある。**
+  現在のワークフローは Auth エミュレータしか使わないため Java を入れていない。
+  `--only auth,firestore` にした時点で CI が落ちるので、
+  `actions/setup-java` を同じ PR で追加すること
 
 ### TICKET-002 の QA からの申し送り（このチケットで必ず対応する）
 
