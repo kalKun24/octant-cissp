@@ -1,0 +1,36 @@
+# main への push で prod 環境（octant-prod）へ自動デプロイする。
+#
+# **main へのマージがそのまま本番リリース**になる（CLAUDE.md「ブランチ・チケット・コミット」）。
+# マージコミット自体がこのワークフローを発火させるため、develop で全経路の
+# 確認が取れてから main へ入れること。
+#
+# WIF が許可するのは kalKun24/octant-cissp × refs/heads/main の組み合わせだけ。
+# develop への push が prod を触ることは、権限の構造上できない。
+#
+# 値の出どころ: make tf-output ENV=prod の ci_workload_identity_provider と
+# ci_service_account_email。
+
+name: prod へデプロイ
+
+on:
+  push:
+    branches:
+      - main
+  # 同じコミットを出し直したいときの手動実行。
+  # main 以外のブランチから実行しても WIF の認証で弾かれる。
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      env: prod
+      workload_identity_provider: projects/540828365194/locations/global/workloadIdentityPools/github/providers/github-actions
+      service_account: octant-ci@octant-prod.iam.gserviceaccount.com
