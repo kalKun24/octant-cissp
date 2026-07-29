@@ -81,7 +81,12 @@ setup-back: ## Go の依存を取得する
 setup-front: ## npm の依存を取得する
 	$(call require_frontend)
 	@# package-lock.json があれば再現性のある npm ci を使う。無ければ npm install で作る。
-	cd $(FRONTEND_DIR) && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+	@#
+	@# --ignore-scripts: 依存の postinstall を実行しない。
+	@# **CI のデプロイジョブは GCP の資格情報を持った状態で走る**ため、
+	@# 依存 1 つの侵害が octant-ci のなりすましに直結する。
+	@# 現在の依存は postinstall 無しでビルドできることを確認済み（make build-front）。
+	cd $(FRONTEND_DIR) && if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
 
 # ---------------------------------------------------------------------------
 # コード生成（API First）
@@ -230,6 +235,26 @@ tf-fmt: ## Terraform のコードを整形する
 # コードで固定された保証ではない。Firebase コンソールで Firestore の
 # ページを開くと「テストモード（30日間 allow all）」を提示され、
 # 押した瞬間に全公開になる。**明示的にリリースして塞いでおく。**
+
+# ---------------------------------------------------------------------------
+# デプロイ前の設定ゲート
+# ---------------------------------------------------------------------------
+#
+# **デプロイ権限を持たないジョブで走らせる。**
+# CI は firebaserules.admin と firebasehosting.admin を持ち、push された内容を
+# そのままリリースする。つまり「リポジトリの設定ファイルの中身」が
+# 本番の防壁そのものであり、レビュー以外に止める仕組みが無い。
+
+.PHONY: check-config
+check-config: check-rules check-csp ## firestore.rules と CSP の設定を検証する（CI 用）
+
+.PHONY: check-rules
+check-rules: ## firestore.rules が全ドキュメント拒否のままか検証する
+	$(SCRIPTS_DIR)/check-firestore-rules.sh
+
+.PHONY: check-csp
+check-csp: ## インラインスクリプトが CSP のハッシュで許可されているか検証する
+	$(SCRIPTS_DIR)/check-csp-hashes.sh
 
 .PHONY: rules-deploy
 rules-deploy: rules-guard ## firestore.rules をデプロイする（ENV=dev|prod）

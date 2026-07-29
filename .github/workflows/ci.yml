@@ -75,6 +75,11 @@ jobs:
       - name: make gen の差分検証（API First）
         run: make gen-check
 
+      # firestore.rules の全拒否と CSP のハッシュを PR の時点で検査する。
+      # デプロイのワークフローも同じ検査を持つが、**PR で気づけるほうが安い。**
+      - name: 設定のゲート（全拒否ルール / CSP のハッシュ）
+        run: make check-config
+
       - name: lint（golangci-lint / eslint / tsc --noEmit）
         run: make lint
 
