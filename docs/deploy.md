@@ -17,12 +17,18 @@ main へ push    ──▶ deploy-prod.yml ──┘
 **`main` へのマージがそのまま本番リリース**になる。マージコミット自体が
 prod のデプロイを発火させるため、`develop` で確認してから `main` へ入れる。
 
+ただし **prod のデプロイジョブは GitHub Environment `prod` の承認待ちで止まる。**
+検証（lint / test / 設定ゲート）は先に走り、**承認するまでイメージは本番に入らない**。
+Environment 側でデプロイ可能ブランチを `main` のみに制限してある。
+
 ## 何が起きるか
 
 `scripts/deploy.sh` が次を順に行う。CI と `make deploy-dev` は**同じスクリプト**を呼ぶ。
 
 1. `backend/` のコンテナをビルドし、`api:<コミット SHA>` として Artifact Registry へ push
-2. Cloud Run を **イメージだけ**差し替える（`gcloud run services update`）。
+2. push した digest を解決し、Cloud Run を **イメージだけ**差し替える
+   （`gcloud run services update --image ...@sha256:...`）。
+   **タグではなく digest を渡す**（CI はタグを付け替えられるため）。
    リビジョン名は `octant-api-<短縮 SHA>-<実行番号>-<試行番号>`
 3. 新しいリビジョンが**準備完了になっている**ことを確認する
 4. `firebase apps:sdkconfig` で `firebaseConfig` を取得し、フロントをビルドする
@@ -48,6 +54,41 @@ GitHub Actions の OIDC トークンを GCP の STS が検証し、
 | prod | `...github/attribute.repository_ref/kalKun24/octant-cissp@refs/heads/main` |
 
 `develop` への push が prod を触ることは、権限の構造上できない。
+
+### CI が侵害されたときの最大影響
+
+**承認ゲートと検証ゲートを置いている理由はここにある。** デプロイ用 SA を借用できた
+攻撃者ができることは、Cloud Run へのデプロイだけではない。
+
+| 権限 | 悪用されると |
+|---|---|
+| `run.developer`（`octant-api`）+ `octant-api` への actAs | **Firestore の全データ**を読み書きするコードを本番で動かせる（実行 SA が `datastore.user`）。**Secret Manager の Anthropic API キー**も同じコンテナから読める |
+| `firebasehosting.admin` | **オリジンごと乗っ取れる。** 任意の JS を `octant-*.web.app` から配れ、同一オリジンなので ID トークンも全ノートも取れる。`/api/**` の rewrite 先を差し替えて**トークンを横取り**することもできる |
+| `firebaserules.admin` | `firestore.rules` を `allow read, write: if true` にリリースできる。Web API キーは公開バンドルに入り、プロジェクト ID も既知なので、**第三者が直接 Firestore を読み書きできる** |
+| `artifactregistry.writer` | 既存タグを付け替えられる（`artifactregistry.tags.update`）。**検証したイメージと動くイメージをずらせる** |
+
+このため次を置いている。**どれも「権限を絞る」だけでは防げないもの**である。
+
+- **prod は GitHub Environment の承認**（`main` への push だけでは走らない）
+- **`make check-config`**（`firestore.rules` の全拒否と CSP のハッシュ）を
+  **デプロイ権限を持たない `verify` ジョブ**で実行する
+- **digest でデプロイする**（タグ付け替えを無効化する）
+- **サードパーティのコードは認証より前に導入する**（`npm ci --ignore-scripts`、
+  `firebase-tools` は exact 指定）
+
+### `*.run.app` は公開されたままである（第2の入口）
+
+**「入口は Hosting だけ」ではない。** Cloud Run の既定 URL は公開されており
+（`default_uri_disabled` は上記の理由で採用できない）、
+**Hosting の headers も CDN のキャッシュ制御も、この経路では効かない。**
+
+したがって次の前提を崩さないこと。
+
+- 応答の `Cache-Control: no-store` と `X-Content-Type-Options` は
+  **アプリのミドルウェア側**（`backend/internal/infrastructure/middleware/securityheaders.go`）で付ける。
+  Hosting の設定に寄せない
+- 認可は **ID トークン検証 + 許可メール**で成立させる。
+  「Hosting を通ったから安全」という判断をコードに持ち込まない
 
 ### デプロイ用 SA の権限
 
@@ -97,6 +138,32 @@ rewrites は上から順に評価され、最初に一致したものだけが�
 この構成により**ブラウザからは同一オリジン**（`https://<site>.web.app/api/...`）で
 API を呼べる。**CORS の設定は不要**であり、サーバに CORS ミドルウェアを入れない。
 
+### セキュリティヘッダとキャッシュ
+
+`headers` は**リクエストパス**に一致する（配信されるファイル名ではない）。
+利用者が開くのは `/` や `/notes` であって `/index.html` ではないため、
+`"source": "/index.html"` のルールは**当たらない**。
+
+```
+**          →  Cache-Control: no-store + CSP・X-Frame-Options 等
+/assets/**  →  Cache-Control: public, max-age=31536000, immutable（後方が優先）
+```
+
+**順序が逆だと SPA シェルが最大 1 時間キャッシュに残り、XSS 修正やロールバックが
+すぐに行き渡らない。** 変更したら `curl -sSI` で実測すること。
+
+CSP は `'unsafe-inline'` を使わず、`index.html` のインラインスクリプト
+（初回表示のテーマ確定）を **SHA-256 ハッシュで許可**している。
+中身が 1 文字変わるとブラウザが黙って実行を止めるため、
+`make check-config` が `firebase.json` のハッシュとの一致を検査する。
+
+- `connect-src` に **Firestore を入れていない。** ブラウザから Firestore へ
+  直接つなぐ設計違反を、CSP でも塞いでいる
+- `style-src` にだけ `'unsafe-inline'` がある。Radix / shadcn が要素へ
+  インラインの style 属性を付けるため（スクリプトの実行には関係しない）
+- Markdown の mermaid を入れる際（TICKET-009）は `worker-src blob:` の追加が
+  要るかもしれない。**必要になったら dev で実測してから足すこと**
+
 ## 検証済みの不採用: Cloud Run の既定 URL を塞ぐ
 
 `*.run.app` への直アクセスを塞げば「Hosting 経由だけ」に絞れるはずだったが、
@@ -137,6 +204,15 @@ make deploy ENV=prod     # prod へ（原則やらない）
 必要なもの: `gcloud`（ADC 認証済み）・`docker`・`firebase`・`node`、
 `make setup-front` 済みの `frontend/node_modules`。
 
+手元実行のときだけ効くガードがある（`CI` が空のときに動く）。
+
+- **作業ツリーが汚れていたら中断する。** イメージは HEAD ではなく作業ツリーから
+  ビルドされるため、未コミットの差分が「レビュー済みコミットの SHA」を名乗る
+- 対応するブランチ（dev は `develop` / prod は `main`）でなければ警告する
+- `ENV=prod` は環境名のタイプ入力を求める
+- `FIREBASE_AUTH_EMULATOR_HOST` を落とし、`frontend/.env*` を一時退避してからビルドする
+  （**手元の設定が配信物に焼き込まれるのを防ぐ**）
+
 ## 詰まったときの確認先
 
 ```bash
@@ -156,7 +232,14 @@ make rules-check ENV=dev
 ### ロールバック
 
 イメージはコミット SHA でタグ付けされているので、戻したいコミットの
-ワークフローを再実行するのが基本。Cloud Run 側だけ即時に戻すなら:
+ワークフローを再実行するのが基本。
+
+> **戻れるのは直近 3 世代まで。** Artifact Registry のクリーンアップポリシーが
+> 最新 3 世代しか残さない（無料枠 0.5GB を超えないためのコスト規約）。
+> それより古いコミットへ戻すには**イメージを作り直す**必要がある。
+> Cloud Run のリビジョンは残っていても、参照先のイメージが消えていれば起動しない。
+
+Cloud Run 側だけ即時に戻すなら:
 
 ```bash
 gcloud run services update-traffic octant-api \
