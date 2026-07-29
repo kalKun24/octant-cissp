@@ -41,3 +41,24 @@ locals {
   # 取り違えると別の請求先に予算を作ってしまうため定数として置く。
   billing_account = "013D28-C16A68-E3B1DA"
 }
+
+module "octant" {
+  source = "../../modules/stack"
+
+  project_id         = local.project_id
+  env                = "dev"
+  region             = local.region
+  firestore_location = local.region
+
+  # コスト規約: dev は 2。min_instances は 0 固定（モジュール側で変数にしていない）。
+  max_instances = 2
+
+  # dev は挙動の確認が目的なのでログを詳しくする。
+  log_level = "debug"
+
+  billing_account           = local.billing_account
+  budget_amount             = 1000
+  budget_notification_email = var.budget_notification_email
+
+  allowed_emails = var.allowed_emails
+}
