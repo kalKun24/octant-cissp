@@ -5,13 +5,13 @@
 | 項目 | 内容 |
 |---|---|
 | チケットID | TICKET-016 |
-| ステータス | 🟡 作業中 |
+| ステータス | 🟢 完了 |
 | 作成日 | 2026-07-28 |
 | 着手日 | 2026-07-29 |
-| 完了日 | - |
+| 完了日 | 2026-07-29 |
 | ブランチ名 | `feature/TICKET-016` |
-| PR番号 | - |
-| PRリンク | - |
+| PR番号 | #11 |
+| PRリンク | https://github.com/kalKun24/octant-cissp/pull/11 |
 
 ## 概要
 
@@ -131,3 +131,47 @@ TICKET-004 / 005 は「GCP プロジェクトが既にある」ことを暗黙�
   リージョン固定でデータベースができてしまい、Terraform 管理外になる
 - Firebase の有効化は「既存の GCP プロジェクトを Firebase に追加する」方向で行う。
   Firebase コンソールから新規作成すると GCP プロジェクト ID が自動採番される
+
+## 完了時メモ
+
+### 確定した構成
+
+| 環境 | プロジェクト ID | tfstate |
+|---|---|---|
+| prod | `octant-prod` | `gs://octant-prod-tfstate` |
+| dev | `octant-dev` | `gs://octant-dev-tfstate` |
+
+課金アカウント `013D28-C16A68-E3B1DA` / リージョン `asia-northeast1`。
+**旧 `octant-cissp` には触れていない**（旧 octant が稼働中のため分離）。
+
+### 実測で判明した落とし穴（すべて docs/gcp-bootstrap.md に記録済み）
+
+**1. `gcloud projects describe` では ID の空き状況を判別できない。**
+存在しない ID でも他者所有でも同じ `PERMISSION_DENIED` を返す（存在の有無を秘匿する仕様）。
+一度「`octant-dev` は取得できない」と誤判断したが、実際は取得できた。
+`octant` だけが取れず `octant-prod` にフォールバックしている。
+
+**2. ブラウザ操作が必要なのは Google サインインの有効化1箇所だけだった。**
+当初4項目をコンソール操作としていたが、3項目は firebase CLI で完結する
+（`projects:addfirebase` / `apps:create` / `apps:sdkconfig`）。
+Hosting サイトは Firebase 追加時に自動作成される。
+
+**3. Identity Toolkit Admin API には `x-goog-user-project` ヘッダが必須。**
+付けないと「quota project 未設定」の 403 になり、API 無効のエラーと紛らわしい。
+
+**4. `gcloud auth application-default login` はクォータプロジェクトを
+gcloud の既定プロジェクトに合わせる。** 既定が旧 `octant-cissp` のままだと
+ADC もそちらを向く。既定とクォータの両方を `octant-dev` に付け替え済み。
+
+### 意図的にやらなかったこと
+
+- **Firestore データベースを作らない。** コンソールで作るとリージョンと PITR が
+  Terraform の管理外になるため、TICKET-004 の Terraform が作る
+- **サービスアカウントキーを発行しない。** ADC と WIF だけを使う
+
+### TICKET-004 への申し送り
+
+- ADC は設定済み。**初回の apply は手元の ADC で行う**（WIF を作るのが Terraform 自身のため）
+- プロバイダに `billing_project` と `user_project_override` を設定し、
+  ADC のクォータプロジェクト設定に依存しない形にすること
+- この時点で**課金は発生していない**（プロジェクト・API・空バケットは無料）
