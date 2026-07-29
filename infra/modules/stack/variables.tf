@@ -1,0 +1,81 @@
+variable "project_id" {
+  description = "GCP プロジェクト ID。"
+  type        = string
+}
+
+variable "env" {
+  description = "環境名。dev または prod。APP_ENV とラベルに使う。"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "prod"], var.env)
+    error_message = "env は dev または prod のいずれかにしてください。"
+  }
+}
+
+variable "region" {
+  description = "Cloud Run・Artifact Registry・Cloud Scheduler のリージョン。"
+  type        = string
+  default     = "asia-northeast1"
+}
+
+variable "firestore_location" {
+  description = "Firestore のロケーション。**作成後は変更できない。**"
+  type        = string
+  default     = "asia-northeast1"
+}
+
+variable "allowed_emails" {
+  description = "API の利用を許可するメールアドレス。**tfvars から渡す。リポジトリに置かない。**"
+  type        = list(string)
+  sensitive   = true
+}
+
+variable "max_instances" {
+  description = "Cloud Run の最大インスタンス数（dev 2 / prod 5）。"
+  type        = number
+}
+
+variable "api_image" {
+  description = <<-EOT
+    Cloud Run の初期イメージ。**初回作成のためのプレースホルダ。**
+    実イメージへの差し替えは TICKET-005 の CI が行い、Terraform は image の変更を無視する。
+  EOT
+  type        = string
+  default     = "gcr.io/cloudrun/hello"
+}
+
+variable "log_level" {
+  description = "API のログレベル。"
+  type        = string
+  default     = "info"
+}
+
+variable "billing_account" {
+  description = "予算アラートを作る課金アカウント ID。"
+  type        = string
+}
+
+variable "budget_amount" {
+  description = "月あたりの予算額（円）。"
+  type        = number
+  default     = 1000
+}
+
+variable "budget_notification_email" {
+  description = "予算アラートの通知先メールアドレス。**tfvars から渡す。**"
+  type        = string
+  sensitive   = true
+}
+
+variable "backup_retention_days" {
+  description = "Firestore エクスポートの保持日数。"
+  type        = number
+  default     = 90
+}
+
+variable "image_keep_count" {
+  description = "Artifact Registry に残すイメージの世代数。"
+  type        = number
+  default     = 3
+}

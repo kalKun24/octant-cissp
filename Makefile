@@ -1,6 +1,6 @@
 # Octant のタスクランナー。CLAUDE.md「コマンド」の一覧を実体化したもの。
 #
-# deploy-dev / tf-plan / tf-apply は後続チケットで実装する。
+# deploy-dev は後続チケットで実装する。
 # 現時点では未実装である旨を表示して異常終了する（嘘の成功を返さないため）。
 
 SHELL := /usr/bin/env bash
@@ -10,7 +10,18 @@ API_DIR      := $(CURDIR)/api
 BACKEND_DIR  := $(CURDIR)/backend
 FRONTEND_DIR := $(CURDIR)/frontend
 SCRIPTS_DIR  := $(CURDIR)/scripts
+INFRA_DIR    := $(CURDIR)/infra
 GOLANGCI_CONFIG := $(CURDIR)/.golangci.yml
+
+# Terraform の対象環境。tf-* ターゲットは ENV=dev|prod を要求する。
+TERRAFORM  ?= terraform
+TF_ENV_DIR := $(INFRA_DIR)/environments/$(ENV)
+
+# GCP プロジェクト ID。TICKET-016 で作成したもの。
+# Terraform 側は environments/*/main.tf が持つが、firebase CLI は
+# --project を要求するため Makefile にも置く。**両者を食い違わせないこと。**
+FIREBASE_PROJECT_dev  := octant-dev
+FIREBASE_PROJECT_prod := octant-prod
 
 # make gen の入力と出力。gen-check はこの出力の差分だけを見る。
 OPENAPI_SPEC := $(API_DIR)/openapi.yaml
@@ -184,20 +195,96 @@ build-api: ## API コンテナをビルドする
 	docker build -t $(API_IMAGE) $(BACKEND_DIR)
 
 # ---------------------------------------------------------------------------
+# インフラ（Terraform）
+# ---------------------------------------------------------------------------
+#
+# 実行例:
+#   make tf-plan ENV=dev
+#   make tf-apply ENV=prod
+#
+# 認証は手元の ADC（gcloud auth application-default login）を使う。
+# **サービスアカウントキーの JSON は発行しない。**
+
+.PHONY: tf-init tf-plan tf-apply tf-fmt tf-validate tf-output
+
+tf-init: tf-guard ## Terraform を初期化する（ENV=dev|prod）
+	cd $(TF_ENV_DIR) && $(TERRAFORM) init -input=false
+
+tf-plan: tf-init ## Terraform の差分を確認する（ENV=dev|prod）
+	cd $(TF_ENV_DIR) && $(TERRAFORM) plan -input=false
+
+tf-apply: tf-init ## Terraform を適用する（ENV=dev|prod）
+	cd $(TF_ENV_DIR) && $(TERRAFORM) apply
+
+tf-output: tf-guard ## Terraform の出力を表示する（ENV=dev|prod）
+	cd $(TF_ENV_DIR) && $(TERRAFORM) output
+
+tf-fmt: ## Terraform のコードを整形する
+	$(TERRAFORM) fmt -recursive $(INFRA_DIR)
+
+# ---------------------------------------------------------------------------
+# Firestore のセキュリティルール
+# ---------------------------------------------------------------------------
+#
+# **ルールをデプロイしないと「ruleset が存在しない」状態になる。**
+# その状態でも Firestore は全拒否するが、それは既定の副作用であって
+# コードで固定された保証ではない。Firebase コンソールで Firestore の
+# ページを開くと「テストモード（30日間 allow all）」を提示され、
+# 押した瞬間に全公開になる。**明示的にリリースして塞いでおく。**
+
+.PHONY: rules-deploy
+rules-deploy: rules-guard ## firestore.rules をデプロイする（ENV=dev|prod）
+	firebase deploy --only firestore:rules \
+		--project $(FIREBASE_PROJECT_$(ENV)) \
+		--config $(CURDIR)/firebase/firebase.json
+
+.PHONY: rules-check
+rules-check: rules-guard ## リリース済みの ruleset があることを確認する（ENV=dev|prod）
+	@project="$(FIREBASE_PROJECT_$(ENV))"; \
+	token="$$(gcloud auth print-access-token)"; \
+	n="$$(curl -sf -H "Authorization: Bearer $$token" -H "x-goog-user-project: $$project" \
+		"https://firebaserules.googleapis.com/v1/projects/$$project/releases" \
+		| grep -c '"name"' || true)"; \
+	if [ "$$n" -eq 0 ]; then \
+		echo "エラー: $$project に ruleset がリリースされていません。" >&2; \
+		echo "  make rules-deploy ENV=$(ENV) を実行してください。" >&2; \
+		exit 1; \
+	fi; \
+	echo "$$project に ruleset がリリースされています。"
+
+.PHONY: rules-guard
+rules-guard:
+	@case "$(ENV)" in \
+		dev|prod) ;; \
+		"") echo "エラー: ENV を指定してください（例: make rules-deploy ENV=dev）。" >&2; exit 1 ;; \
+		*) echo "エラー: ENV は dev または prod です（指定値: $(ENV)）。" >&2; exit 1 ;; \
+	esac
+
+tf-validate: tf-init ## Terraform の構文と型を検証する（ENV=dev|prod）
+	cd $(TF_ENV_DIR) && $(TERRAFORM) validate
+
+# ENV の指定漏れ・打ち間違いと tfvars の未作成を、GCP を触る前に弾く。
+.PHONY: tf-guard
+tf-guard:
+	@case "$(ENV)" in \
+		dev|prod) ;; \
+		"") echo "エラー: ENV を指定してください（例: make tf-plan ENV=dev）。" >&2; exit 1 ;; \
+		*) echo "エラー: ENV は dev または prod です（指定値: $(ENV)）。" >&2; exit 1 ;; \
+	esac
+	@if [ ! -f "$(TF_ENV_DIR)/terraform.tfvars" ]; then \
+		echo "エラー: $(TF_ENV_DIR)/terraform.tfvars がありません。" >&2; \
+		echo "  cp $(TF_ENV_DIR)/terraform.tfvars.example $(TF_ENV_DIR)/terraform.tfvars" >&2; \
+		echo "  を実行し、許可メールと通知先メールを埋めてください（このファイルはコミットしません）。" >&2; \
+		exit 1; \
+	fi
+
+# ---------------------------------------------------------------------------
 # 未実装（後続チケットで実装する）
 # ---------------------------------------------------------------------------
 
 .PHONY: deploy-dev
 deploy-dev: ## [未実装] dev 環境へ手動デプロイする
 	$(call not_implemented,make deploy-dev,TICKET-005 CI/CD自動デプロイ)
-
-.PHONY: tf-plan
-tf-plan: ## [未実装] Terraform の差分を確認する
-	$(call not_implemented,make tf-plan,TICKET-004 Terraform)
-
-.PHONY: tf-apply
-tf-apply: ## [未実装] Terraform を適用する
-	$(call not_implemented,make tf-apply,TICKET-004 Terraform)
 
 # ---------------------------------------------------------------------------
 # ヘルプ

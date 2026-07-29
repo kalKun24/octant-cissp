@@ -1,0 +1,13 @@
+# terraform.tfvars の雛形。
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# **terraform.tfvars はコミットしない**（.gitignore 済み）。
+# 個人のメールアドレスが入るため、リポジトリにも plan のログにも残さない
+# （変数は sensitive 指定にしてあり、plan の出力にも表示されない）。
+
+# API の利用を許可するメールアドレス。ここに無いアドレスは 403 になる。
+allowed_emails = ["you@example.com"]
+
+# 予算アラート（月 1,000 円の 50 / 90 / 100%）の通知先。
+budget_notification_email = "you@example.com"
