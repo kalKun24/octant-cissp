@@ -298,15 +298,17 @@ infrastructure ──▶ interface ──▶ usecase ──▶ domain
 
 ### 環境
 
-| 環境 | GCPプロジェクト | ブランチ | デプロイ |
-|---|---|---|---|
-| dev | `octant-dev` | `develop` | push で自動 |
-| prod | `octant` | `main` | push で自動 |
+| 環境 | GCPプロジェクト | tfstate | ブランチ | デプロイ |
+|---|---|---|---|---|
+| dev | `octant-dev` | `gs://octant-dev-tfstate` | `develop` | push で自動 |
+| prod | `octant-prod` | `gs://octant-prod-tfstate` | `main` | push で自動 |
 
-**GCP はゼロから立ち上げる。** プロジェクトも課金の紐付けも存在しない状態が出発点で、
-TICKET-016（ブートストラップ）で作る。**上記のプロジェクト ID は希望値**であり、
-プロジェクト ID は全世界で一意のため取得できない可能性がある。
-**実際に取れた ID を正とし、この表を書き換えること。**
+**旧プロジェクト `octant-cissp` には触れない。** 旧 octant（単一HTML版）が稼働中で、
+新規の2つと完全に分離している。
+
+立ち上げ手順は `docs/gcp-bootstrap.md`、自動化部分は `scripts/bootstrap-gcp.sh`。
+**Firestore データベースは TICKET-004 の Terraform が作る**（コンソールで先に作ると
+リージョンと PITR が Terraform の管理外になるため）。
 
 **手で `gcloud run deploy` を打たない。** すべての変更は Terraform と
 GitHub Actions を経由する。緊急時に手で当てた場合は、その日のうちに
