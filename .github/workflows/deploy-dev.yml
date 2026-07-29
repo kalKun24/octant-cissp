@@ -1,0 +1,38 @@
+# develop への push で dev 環境（octant-dev）へ自動デプロイする。
+#
+# ここに書いた WIF プロバイダと SA は**秘密情報ではない**。
+# これらを知っていてもデプロイはできず、GitHub が発行する OIDC トークンの
+# repository と ref が Terraform 側で許可した組み合わせ
+# （kalKun24/octant-cissp × refs/heads/develop）と一致する必要がある。
+# GitHub Secrets に入れず、リポジトリだけを見ればパイプラインの全体が分かる状態にしている。
+#
+# 値の出どころ: make tf-output ENV=dev の ci_workload_identity_provider と
+# ci_service_account_email。
+
+name: dev へデプロイ
+
+on:
+  push:
+    branches:
+      - develop
+  # 同じコミットを出し直したいときの手動実行。
+  # develop 以外のブランチから実行しても WIF の認証で弾かれる。
+  workflow_dispatch:
+
+# デプロイ同士が競合しないよう直列化する。
+# **実行中のデプロイは打ち切らない**（途中で止めると Cloud Run と Hosting の
+# 世代が食い違ったままになるため）。
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      env: dev
+      workload_identity_provider: projects/576603340630/locations/global/workloadIdentityPools/github/providers/github-actions
+      service_account: octant-ci@octant-dev.iam.gserviceaccount.com

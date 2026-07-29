@@ -1,0 +1,146 @@
+# デプロイの本体。deploy-dev.yml と deploy-prod.yml から呼ばれる。
+#
+# 環境ごとの違いは呼び出し側が渡す 3 つの入力（環境名・WIF プロバイダ・SA）だけで、
+# **手順は dev と prod で完全に同じ**にしてある。片方だけで通る手順を作らないため。
+#
+# 認証は Workload Identity Federation。**サービスアカウントキーは存在しない。**
+# 借用できる SA は Terraform 側で「リポジトリ × ブランチ」に固定してあるので、
+# develop 以外のブランチからこのワークフローを動かしても dev には届かない。
+
+name: デプロイ（共通）
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        description: "デプロイ先の環境（dev または prod）"
+        required: true
+        type: string
+      workload_identity_provider:
+        description: "WIF プロバイダのリソース名。秘密情報ではない（リポジトリとブランチが一致しなければ使えない）"
+        required: true
+        type: string
+      service_account:
+        description: "借用するデプロイ用サービスアカウント"
+        required: true
+        type: string
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "24"
+  FIREBASE_TOOLS_VERSION: "15"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # デプロイ前の検証。**ここが落ちたらデプロイしない。**
+  #
+  # ci.yml は pull_request でしか動かないため、push 経路にも同じ検証を置く
+  # （develop へ直接入ったコミットが未検証のまま dev へ出るのを防ぐ）。
+  # -------------------------------------------------------------------------
+  verify:
+    name: lint と test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # **この job には id-token を渡さない。** デプロイ権限を持たない状態で
+    # リポジトリのコードとテストを動かす。
+    permissions:
+      contents: read
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # **キャッシュを一切使わない。**
+      # ci.yml（pull_request で動く）と同じキャッシュを共有すると、
+      # PR 側で汚染された ~/go/bin の実行ファイルが、デプロイ権限を持つ
+      # このワークフローで実行される経路になる。数分の実行時間より安全を取る。
+      - name: Go をセットアップ
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Node をセットアップ
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Go ツールを導入（golangci-lint / oapi-codegen）
+        run: make setup-tools
+
+      - name: 依存を取得
+        run: |
+          make setup-back
+          make setup-front
+
+      - name: make gen の差分検証（API First）
+        run: make gen-check
+
+      - name: lint（golangci-lint / eslint / tsc --noEmit）
+        run: make lint
+
+      - name: backend のテスト
+        run: make test
+
+      - name: firebase-tools を導入
+        run: npm install -g firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
+
+      - name: backend の統合テスト（Auth エミュレータ）
+        run: make test-integration
+
+      - name: frontend のテスト
+        run: make test-front
+
+  # -------------------------------------------------------------------------
+  # デプロイ。scripts/deploy.sh が実体（手元の make deploy-dev と同じ手順）。
+  # -------------------------------------------------------------------------
+  deploy:
+    name: ${{ inputs.env }} へデプロイ
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      # WIF の OIDC トークンを取得するために要る。**ここだけ書き込み権限。**
+      id-token: write
+      contents: read
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Node をセットアップ
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # キーレス認証。JSON キーは発行していないので Secrets には何も入っていない。
+      # この step が書き出す認証情報は「外部アカウント設定」であり鍵ではない。
+      - name: GCP に認証（Workload Identity Federation）
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ inputs.workload_identity_provider }}
+          service_account: ${{ inputs.service_account }}
+
+      - name: gcloud をセットアップ
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: 依存を取得（フロントのビルドに要る）
+        run: make setup-front
+
+      - name: firebase-tools を導入
+        run: npm install -g firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
+
+      # イメージのビルドと push、Cloud Run の更新、firestore.rules と Hosting の
+      # デプロイ、Hosting 経由の疎通確認までをまとめて行う。
+      # リビジョン名にコミット SHA を入れ、どの実行の成果物かを追えるようにする。
+      - name: デプロイ
+        env:
+          ENV: ${{ inputs.env }}
+          GIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          export REVISION_SUFFIX="${GIT_SHA:0:7}-${RUN_NUMBER}-${RUN_ATTEMPT}"
+          scripts/deploy.sh
