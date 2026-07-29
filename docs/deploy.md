@@ -97,6 +97,34 @@ rewrites は上から順に評価され、最初に一致したものだけが�
 この構成により**ブラウザからは同一オリジン**（`https://<site>.web.app/api/...`）で
 API を呼べる。**CORS の設定は不要**であり、サーバに CORS ミドルウェアを入れない。
 
+## 検証済みの不採用: Cloud Run の既定 URL を塞ぐ
+
+`*.run.app` への直アクセスを塞げば「Hosting 経由だけ」に絞れるはずだったが、
+**dev で実測した結果、Hosting の rewrites も同時に落ちるため採用しない。**
+
+| 設定 | `*.run.app` 直アクセス | Hosting 経由 `/api/health` |
+|---|---|---|
+| `default_uri_disabled = false`（採用） | 200 | 200 |
+| `default_uri_disabled = true` | 404 | **404** |
+
+さらに `false` に戻しても Hosting は 404 のままで、
+**`firebase deploy --only hosting` を打ち直すまで復旧しなかった。**
+Terraform の変数（`default_uri_disabled`）は残してあるが、既定は `false`。
+
+直アクセスを塞ぎたい場合の代替は Hosting 由来かどうかをアプリ側で見る等になるが、
+**認可はアプリの 1 箇所（ID トークン検証 + 許可メール）**で成立しており、
+`*.run.app` を直接叩いても認証を通らなければ何も読めない。優先度は低い。
+
+## Terraform を適用するとリビジョンが増える
+
+`terraform apply` が Cloud Run の構成を変えると、**自動採番のリビジョン
+（`octant-api-00006-ww5` など）が作られる。** `image` は `ignore_changes` の
+対象なので**中身は CI が出したイメージのまま**だが、コミット SHA を含む
+リビジョン名は引き継がれない。
+
+どのコミットが動いているかは `/api/health` の `revision` ではなく、
+リビジョンのイメージタグ（`api:<コミット SHA>`）で辿ること。
+
 ## 手元から出す
 
 CI が動かせないときの出口。**通常は使わない。**

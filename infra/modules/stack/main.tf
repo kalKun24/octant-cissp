@@ -119,6 +119,7 @@ module "cloud_run" {
 
   anthropic_api_key_secret_id = module.secret.secret_id
   max_instances               = var.max_instances
+  default_uri_disabled        = var.default_uri_disabled
 
   # シークレットの参照権限が無いままサービスを作るとリビジョンの起動に失敗する。
   # モジュール単位で順序を固定しておく。

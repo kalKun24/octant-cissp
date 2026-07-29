@@ -45,6 +45,16 @@ variable "api_image" {
   default     = "gcr.io/cloudrun/hello"
 }
 
+variable "default_uri_disabled" {
+  description = <<-EOT
+    Cloud Run の *.run.app 直アクセスを塞ぐか。
+    **false のまま使う。** dev での実測で Hosting の rewrites ごと落ちることを確認済み
+    （詳細は modules/cloud-run-service/variables.tf のコメント）。
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "log_level" {
   description = "API のログレベル。"
   type        = string

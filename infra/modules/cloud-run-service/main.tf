@@ -40,6 +40,11 @@ resource "google_cloud_run_v2_service" "this" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = var.deletion_protection
 
+  # *.run.app の既定 URL を塞ぐかどうか。
+  # **Firebase Hosting の rewrites 経由でしか到達させたくない**場合に true にする。
+  # 挙動は環境ごとに検証してから有効にすること（variables.tf のコメントを参照）。
+  default_uri_disabled = var.default_uri_disabled
+
   template {
     service_account                  = var.service_account_email
     max_instance_request_concurrency = var.concurrency

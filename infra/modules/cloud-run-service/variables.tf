@@ -146,6 +146,22 @@ variable "allow_unauthenticated" {
   default     = true
 }
 
+variable "default_uri_disabled" {
+  description = <<-EOT
+    *.run.app の既定 URL を塞ぐか。**false のまま使うこと。**
+
+    2026-07-30 に dev で実測した結果、**true にすると Firebase Hosting の
+    /api/** rewrites も 404 になる**（Hosting からの転送が既定 URL を経由しているため）。
+    直アクセスは確かに塞げるが、同時に API 全体が落ちるので採用できない。
+
+    さらに false に戻しても Hosting は 404 のままで、
+    **hosting を再デプロイするまで復旧しなかった。**
+    再検証するときは dev で行い、戻したあとに firebase deploy --only hosting まで実行すること。
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "deletion_protection" {
   description = "Cloud Run サービスの削除保護。データは Firestore 側にあり、サービスは再作成できるため既定は false。"
   type        = bool

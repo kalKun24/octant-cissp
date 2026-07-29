@@ -9,6 +9,7 @@ API の有効化・tfstate バケットは **TICKET-016 のブートストラッ
 ```
 modules/
   stack/              1 環境分を組み立てる合成モジュール（environments はこれを呼ぶだけ）
+  ci-workload-identity/ GitHub Actions のキーレス認証（WIF）とデプロイ用 SA
   firestore/          Firestore（PITR・削除保護）
   artifact-registry/  イメージ置き場（最新 3 世代のみ保持）
   cloud-run-service/  API サービス（min_instances = 0 固定）
@@ -57,6 +58,26 @@ Terraform が作るのは**入れ物まで**で、値は入れない。
 printf '%s' "$ANTHROPIC_API_KEY" | \
   gcloud secrets versions add anthropic-api-key --project octant-dev --data-file=-
 ```
+
+## CI/CD（Workload Identity Federation）
+
+GitHub Actions は `octant-ci@<project>` を **キーレスで借用**してデプロイする。
+定義は `modules/ci-workload-identity/`、パイプライン全体の説明は `docs/deploy.md`。
+
+**鶏と卵に注意。** WIF を作るのは Terraform だが、その Terraform を CI から
+動かすにも WIF が要る。**初回作成は手元の ADC で `make tf-apply ENV=dev|prod`** を実行する。
+
+**CI から `terraform apply` はしない。** Terraform に要る権限は広く、
+それを CI に渡すとデプロイ用 SA を絞った意味が消える。
+インフラの変更は手元の ADC で行い、CI はイメージと配信物だけを持つ。
+
+借用を許可しているのは「リポジトリ × ブランチ」の組み合わせだけ。
+
+```bash
+make tf-output ENV=dev | grep ci_      # プロバイダ・SA・許可した principalSet
+```
+
+**`ci_allowed_refs` を一時的に広げて検証したら、必ず元に戻すこと。**
 
 ## イメージの扱い
 
