@@ -83,7 +83,21 @@ echo "==> API コンテナをビルドします"
 docker build --platform linux/amd64 -t "$IMAGE" "$REPO_ROOT/backend"
 
 echo "==> Artifact Registry へ push します"
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+# **gcloud auth configure-docker（認証ヘルパ）は使わない。**
+# Workload Identity Federation の資格情報だとヘルパが黙って無資格の要求を出し、
+# push が "Unauthenticated request" で落ちる。
+# 短命のアクセストークンで明示的にログインする（手元でも CI でも同じ経路）。
+docker_registry="https://${REGION}-docker.pkg.dev"
+
+docker_logout() {
+	docker logout "$docker_registry" >/dev/null 2>&1 || true
+}
+trap docker_logout EXIT
+
+gcloud auth print-access-token |
+	docker login -u oauth2accesstoken --password-stdin "$docker_registry"
+
 docker push "$IMAGE"
 
 # ---------------------------------------------------------------------------
