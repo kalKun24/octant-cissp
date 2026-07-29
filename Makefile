@@ -1,7 +1,6 @@
 # Octant のタスクランナー。CLAUDE.md「コマンド」の一覧を実体化したもの。
 #
-# deploy-dev は後続チケットで実装する。
-# 現時点では未実装である旨を表示して異常終了する（嘘の成功を返さないため）。
+# 未実装のターゲットは not_implemented で異常終了させる（嘘の成功を返さないため）。
 
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
@@ -279,12 +278,31 @@ tf-guard:
 	fi
 
 # ---------------------------------------------------------------------------
-# 未実装（後続チケットで実装する）
+# デプロイ
 # ---------------------------------------------------------------------------
+#
+# **通常は CI に任せる。** develop への push で dev、main への push で prod へ
+# 自動デプロイされる（.github/workflows/deploy-*.yml）。
+#
+# ここにあるのは、CI と同じ手順を手元から再現するための出口。
+# パイプラインの検証と、CI が動かせないときの緊急用に使う。
+# **手で gcloud run deploy を打たない**（scripts/deploy.sh を通す）。
+
+.PHONY: deploy
+deploy: deploy-guard ## dev または prod へデプロイする（ENV=dev|prod。通常は CI に任せる）
+	ENV=$(ENV) $(SCRIPTS_DIR)/deploy.sh
 
 .PHONY: deploy-dev
-deploy-dev: ## [未実装] dev 環境へ手動デプロイする
-	$(call not_implemented,make deploy-dev,TICKET-005 CI/CD自動デプロイ)
+deploy-dev: ## dev 環境へ手動デプロイする（通常は CI に任せる）
+	$(MAKE) deploy ENV=dev
+
+.PHONY: deploy-guard
+deploy-guard:
+	@case "$(ENV)" in \
+		dev|prod) ;; \
+		"") echo "エラー: ENV を指定してください（例: make deploy ENV=dev）。" >&2; exit 1 ;; \
+		*) echo "エラー: ENV は dev または prod です（指定値: $(ENV)）。" >&2; exit 1 ;; \
+	esac
 
 # ---------------------------------------------------------------------------
 # ヘルプ
