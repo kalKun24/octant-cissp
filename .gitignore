@@ -19,6 +19,8 @@ gha-creds-*.json
 # Node
 node_modules/
 /frontend/dist/
+# Hosting の公開ディレクトリ。scripts/deploy.sh が frontend/dist から複製する
+/firebase/dist/
 /frontend/coverage/
 .vite/
 *.tsbuildinfo
