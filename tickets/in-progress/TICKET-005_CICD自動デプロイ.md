@@ -5,11 +5,11 @@
 | 項目 | 内容 |
 |---|---|
 | チケットID | TICKET-005 |
-| ステータス | 🔴 未着手 |
+| ステータス | 🟡 作業中 |
 | 作成日 | 2026-07-27 |
-| 着手日 | - |
+| 着手日 | 2026-07-30 |
 | 完了日 | - |
-| ブランチ名 | - |
+| ブランチ名 | `feature/TICKET-005` |
 | PR番号 | - |
 | PRリンク | - |
 
@@ -53,6 +53,24 @@ Firebase Hosting の `/api/**` rewrites で Cloud Run にプロキシする構�
 - [ ] ブラウザから同一オリジンで API を呼べる（CORS 設定が不要であることを確認）
 - [ ] `firebase/firestore.rules` が全ドキュメント拒否の状態でデプロイされる
 - [ ] デプロイ前に lint とテストが実行され、失敗したらデプロイされない
+
+### TICKET-004 の QA からの申し送り（このチケットで対応する）
+
+- [ ] **WIF の CI 用 SA は `roles/run.admin` ではなく `roles/run.developer` +
+      特定サービスへの `actAs` に絞る。** Cloud Run の `image` は
+      `ignore_changes` の対象で `terraform plan` が不正な差し替えを検出しないため、
+      デプロイ権限を持つ主体が広いと「`octant-api` SA（Firestore 全アクセス）で
+      動く任意のコード」をデプロイできてしまう
+- [ ] **既存 CI の `~/go/bin` キャッシュを WIF ワークフローと共有しない。**
+      キャッシュ汚染が、デプロイ権限を持つジョブでのコード実行経路になる
+- [ ] **`firebase.json` の `/api/**` rewrites は SPA フォールバック
+      （`**` → `/index.html`）より前に置く。** 順序を誤ると API が index.html を返す
+- [ ] **`make rules-deploy` を CI に組み込む**（TICKET-004 で Makefile に追加済み）。
+      現在は手動デプロイのみで、ルールの退行を CI が検知できない
+- [ ] Actions を **SHA でピン留め**する（タグ参照はキャッシュ汚染・タグ付け替えの経路）
+- [ ] **`default_uri_disabled` の検証**: `*.run.app` の直接アクセスを塞げる可能性があるが、
+      **Firebase Hosting の rewrites が動くか未検証**。dev で先に試し、
+      動かなければ採用しない。**未検証のまま prod に入れないこと**
 
 ## サブチケット（コミット計画）
 
