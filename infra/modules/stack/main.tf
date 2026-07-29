@@ -137,8 +137,9 @@ module "ci" {
   env        = var.env
   region     = var.region
 
-  github_repository = var.github_repository
-  allowed_refs      = var.ci_allowed_refs
+  github_repository          = var.github_repository
+  github_repository_owner_id = var.github_repository_owner_id
+  allowed_refs               = var.ci_allowed_refs
 
   # デプロイ権限はこの 2 つのリソースにだけ紐づける
   # （権限設計の理由はモジュール側のコメントを参照）。

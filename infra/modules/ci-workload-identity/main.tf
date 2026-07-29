@@ -34,7 +34,21 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   # **この条件が最後の砦。** これが無い（= 常に true）と、GitHub の
   # **任意のリポジトリ**が発行した OIDC トークンでプールに入れてしまう。
   # SA 側の principalSet でブランチまで絞るが、入口でもリポジトリを固定する。
-  attribute_condition = "assertion.repository == \"${var.github_repository}\" && assertion.repository_owner == \"${local.repository_owner}\""
+  #
+  # repository と repository_owner は**改名すれば別の誰かが取得できる文字列**なので、
+  # 数値の repository_owner_id（GitHub アカウントに固定で紐づき、再利用されない）も
+  # AND で要求する。
+  #
+  # **この条件を緩めない。**
+  # 下の principalSet は attribute.repository_ref（"owner/repo@refs/heads/x"）で
+  # 主体を識別しており、**その一意性はここで repository を完全一致に固定していることに
+  # 依存している**。ここを前方一致やワイルドカードにすると、
+  # 似た名前のリポジトリが同じ principalSet に一致しうる。
+  attribute_condition = join(" && ", [
+    "assertion.repository == \"${var.github_repository}\"",
+    "assertion.repository_owner == \"${local.repository_owner}\"",
+    "assertion.repository_owner_id == \"${var.github_repository_owner_id}\"",
+  ])
 
   attribute_mapping = {
     "google.subject"       = "assertion.sub"

@@ -23,6 +23,22 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_owner_id" {
+  description = <<-EOT
+    GitHub アカウントの数値 ID。**改名しても変わらず、再利用もされない。**
+    リポジトリ名の文字列だけで判定すると、改名・削除のあとに同名を取得した
+    第三者がプールに入れてしまうため、不変の ID も併せて要求する。
+
+      gh api users/<owner> --jq .id
+  EOT
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id は数値で指定してください。"
+  }
+}
+
 variable "allowed_refs" {
   description = <<-EOT
     デプロイ用 SA の借用を許可する Git の ref。**ブランチまで固定する。**

@@ -67,6 +67,12 @@ variable "github_repository" {
   default     = "kalKun24/octant-cissp"
 }
 
+variable "github_repository_owner_id" {
+  description = "GitHub アカウントの数値 ID（改名しても変わらない不変の識別子）。gh api users/<owner> --jq .id で確認する。"
+  type        = string
+  default     = "107126133"
+}
+
 variable "ci_allowed_refs" {
   description = <<-EOT
     この環境へのデプロイを許可するブランチの ref。
