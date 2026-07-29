@@ -17,6 +17,12 @@ GOLANGCI_CONFIG := $(CURDIR)/.golangci.yml
 TERRAFORM  ?= terraform
 TF_ENV_DIR := $(INFRA_DIR)/environments/$(ENV)
 
+# GCP プロジェクト ID。TICKET-016 で作成したもの。
+# Terraform 側は environments/*/main.tf が持つが、firebase CLI は
+# --project を要求するため Makefile にも置く。**両者を食い違わせないこと。**
+FIREBASE_PROJECT_dev  := octant-dev
+FIREBASE_PROJECT_prod := octant-prod
+
 # make gen の入力と出力。gen-check はこの出力の差分だけを見る。
 OPENAPI_SPEC := $(API_DIR)/openapi.yaml
 GO_API_GEN   := $(BACKEND_DIR)/internal/interface/openapi/openapi.gen.go
@@ -215,6 +221,44 @@ tf-output: tf-guard ## Terraform の出力を表示する（ENV=dev|prod）
 
 tf-fmt: ## Terraform のコードを整形する
 	$(TERRAFORM) fmt -recursive $(INFRA_DIR)
+
+# ---------------------------------------------------------------------------
+# Firestore のセキュリティルール
+# ---------------------------------------------------------------------------
+#
+# **ルールをデプロイしないと「ruleset が存在しない」状態になる。**
+# その状態でも Firestore は全拒否するが、それは既定の副作用であって
+# コードで固定された保証ではない。Firebase コンソールで Firestore の
+# ページを開くと「テストモード（30日間 allow all）」を提示され、
+# 押した瞬間に全公開になる。**明示的にリリースして塞いでおく。**
+
+.PHONY: rules-deploy
+rules-deploy: rules-guard ## firestore.rules をデプロイする（ENV=dev|prod）
+	firebase deploy --only firestore:rules \
+		--project $(FIREBASE_PROJECT_$(ENV)) \
+		--config $(CURDIR)/firebase/firebase.json
+
+.PHONY: rules-check
+rules-check: rules-guard ## リリース済みの ruleset があることを確認する（ENV=dev|prod）
+	@project="$(FIREBASE_PROJECT_$(ENV))"; \
+	token="$$(gcloud auth print-access-token)"; \
+	n="$$(curl -sf -H "Authorization: Bearer $$token" -H "x-goog-user-project: $$project" \
+		"https://firebaserules.googleapis.com/v1/projects/$$project/releases" \
+		| grep -c '"name"' || true)"; \
+	if [ "$$n" -eq 0 ]; then \
+		echo "エラー: $$project に ruleset がリリースされていません。" >&2; \
+		echo "  make rules-deploy ENV=$(ENV) を実行してください。" >&2; \
+		exit 1; \
+	fi; \
+	echo "$$project に ruleset がリリースされています。"
+
+.PHONY: rules-guard
+rules-guard:
+	@case "$(ENV)" in \
+		dev|prod) ;; \
+		"") echo "エラー: ENV を指定してください（例: make rules-deploy ENV=dev）。" >&2; exit 1 ;; \
+		*) echo "エラー: ENV は dev または prod です（指定値: $(ENV)）。" >&2; exit 1 ;; \
+	esac
 
 tf-validate: tf-init ## Terraform の構文と型を検証する（ENV=dev|prod）
 	cd $(TF_ENV_DIR) && $(TERRAFORM) validate
