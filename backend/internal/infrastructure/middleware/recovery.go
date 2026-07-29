@@ -15,6 +15,10 @@ import (
 func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// panic からの復帰時にはリクエストが差し替えられている可能性があるため、
+			// 開始時点の context をここで確定させて defer に渡す。
+			ctx := r.Context()
+
 			defer func() {
 				rec := recover()
 				if rec == nil {
@@ -25,8 +29,8 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 					panic(rec)
 				}
 
-				logger.LogAttrs(r.Context(), slog.LevelError, "パニックから復帰しました",
-					slog.String("trace_id", chimw.GetReqID(r.Context())),
+				logger.LogAttrs(ctx, slog.LevelError, "パニックから復帰しました",
+					slog.String("trace_id", chimw.GetReqID(ctx)),
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.Any("panic", rec),

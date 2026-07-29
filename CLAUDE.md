@@ -359,14 +359,22 @@ Firebase Hosting 10GB保存・日360MB転送。
 
 | 層 | 対象 | 実行 |
 |---|---|---|
-| ユニット | domain のドメインルール（SM-2など）、usecase | `make test` |
-| 統合 | Firestoreリポジトリ | エミュレータ（`make test`に含む） |
-| 契約 | 実装が `openapi.yaml` と一致するか | CI（`make gen` の差分検証） |
+| ユニット | domain のドメインルール（SM-2など）、usecase | `make test`（エミュレータ不要） |
+| 統合 | 認証・Firestoreリポジトリ | `make test-integration`（エミュレータを起動する） |
+| 契約 | 実装が `openapi.yaml` と一致するか | `make gen-check` |
 | フロント | フック・コンポーネント（Vitest） | `make test-front` |
 
+**CI は上記4つすべてを実行する。** 統合テストを `make test` に含めないのは、
+エミュレータが無い環境で `t.Skip` されると**緑に見えるのに何も検証していない**状態に
+なるため。分離しておけば「速い `make test`」と「本当に叩く `make test-integration`」の
+区別が実行時に明確になる。
+
+- **`t.Skip` された統合テストを PASS に数えない。** 未検証として扱う
 - **Claude API を叩く自動テストを CI に置かない**（課金とレート制限のため）。
   `claudeapi` はインターフェース越しにモックする
 - 疎通確認が要る場合は手動のスモークスクリプトを用意し、明示的に実行する
+- 統合テストには **firebase-tools** が必要。Auth エミュレータだけなら Java 不要だが、
+  **Firestore エミュレータには JRE が要る**（TICKET-006 で必要になる）
 
 ## 守るべき制約（まとめ）
 

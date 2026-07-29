@@ -71,6 +71,28 @@ Artifact Registry・Secret Manager・予算アラート・週次バックアッ�
 
 ## 関連情報
 
+### TICKET-003 からの申し送り: Cloud Run への環境変数注入は必須
+
+**次の3つが欠けると、リビジョンは起動に失敗する**（設定漏れを黙って既定値で
+埋めると、認証の緩い側へ倒れるため、あえて起動失敗にしてある）。
+Terraform の `cloud-run-service` モジュールで**必ず注入すること。**
+
+| 環境変数 | 値 | 欠けた場合 |
+|---|---|---|
+| `APP_ENV` | `dev` または `prod` | 起動失敗。**既定値は無い**（`local` に落とさない） |
+| `FIREBASE_PROJECT_ID` | 実際の Firebase プロジェクト ID | 起動失敗（ID トークンの `iss` / `aud` 照合に必要） |
+| `ALLOWED_EMAILS` | 許可メールのカンマ区切り | 起動失敗（1件も無い設定では起動しない） |
+
+- `APP_ENV` を `local` にしないこと。`local` 以外でのみ
+  `FIREBASE_AUTH_EMULATOR_HOST` の混入ガードが効く
+- **`FIREBASE_AUTH_EMULATOR_HOST` は絶対に設定しない。** 設定されていると
+  `APP_ENV` が `dev` / `prod` のとき起動を拒否する（エミュレータ接続時は
+  ID トークンの署名検証が省略されるため）
+- `ALLOWED_EMAILS` は個人のメールアドレスなので、`.tfvars` に直書きせず
+  変数経由で渡すこと（`*.tfvars` は `.gitignore` 済み）
+
+### そのほか
+
 - CLAUDE.md「インフラ・デプロイ」「コスト規約」
 - **前提: TICKET-016（GCP ブートストラップ）が完了していること**
 - GCPプロジェクト: dev `octant-dev` / prod `octant`。リージョン `asia-northeast1`。

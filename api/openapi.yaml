@@ -30,9 +30,29 @@ info:
     - 一覧はカーソルページネーション（`limit` / `cursor` →
       `items` / `next_cursor`）です。オフセット方式は提供しません。
 
+    ## 認証
+
+    **既定で全エンドポイントが認証を要します**（トップレベルの `security`）。
+    `Authorization: Bearer <Firebase ID トークン>` を付けてください。
+
+    認証を要しないエンドポイントは、そのオペレーションで `security: []` と
+    書いて**明示的に除外**します。この向きにしているのは、
+    エンドポイントごとに `security` を書く方式（opt-in）だと
+    **書き忘れたエンドポイントが無認証で公開される**ためです。
+    除外は現在 `/health` の GET と HEAD だけです。
+
+    サーバ側は ID トークンの検証に加えて、`email_verified` が真であることと
+    許可メールのホワイトリストに含まれることを確認します。
+
+    - トークンが無い・壊れている・失効している・`email_verified` が偽 → `401`
+    - トークンは正当だが許可メールでない → `403`
+
 servers:
   - url: http://localhost:8080/api
     description: ローカル開発（make dev）
+
+security:
+  - bearerAuth: []
 
 tags:
   - name: system
@@ -47,6 +67,10 @@ paths:
       description: |
         サーバが応答可能かを返します。Cloud Run と GCP ロードバランサの
         ヘルスチェックが使うため、認証を要しません。
+      # トップレベルの security を打ち消して認証を免除する。
+      # サーバ側の免除 allowlist（backend/cmd/server/main.go の publicRouteEntries）と
+      # 対で維持すること。両者の一致は TestPublicRoutesMatchOpenAPISecurity が検証する。
+      security: []
       responses:
         '200':
           description: サーバは稼働しています。
@@ -70,6 +94,8 @@ paths:
         **業務 API は GET のみを登録し、HEAD は 405 を返します。**
         chi は GET に対して HEAD を自動登録しないため、
         この仕様に書かれていないメソッドが実装に生えることはありません。
+      # GET /health と同じ理由で認証を免除する。
+      security: []
       responses:
         '200':
           description: サーバは稼働しています。ボディは返しません。
@@ -79,6 +105,24 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 components:
+  # ---------------------------------------------------------------------------
+  # セキュリティスキーム
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Firebase Authentication が発行した ID トークンを
+        `Authorization: Bearer <IDトークン>` で送ります。
+
+        - トークンはフロントの Firebase SDK が取得します。**サーバは独自のトークンを発行しません。**
+        - サーバは Firebase Admin SDK で署名・発行者・対象・有効期限を検証し、
+          さらに `email_verified` と許可メールのホワイトリスト（環境変数 `ALLOWED_EMAILS`）を確認します
+        - 以降の処理で使う `uid` は**検証済みトークンからのみ**取り出します。
+          リクエストボディやパスパラメータの `uid` は信用しません
+
   # ---------------------------------------------------------------------------
   # スキーマ
   # ---------------------------------------------------------------------------

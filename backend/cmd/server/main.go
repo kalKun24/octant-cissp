@@ -14,13 +14,14 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/kalKun24/octant-cissp/backend/internal/config"
+	"github.com/kalKun24/octant-cissp/backend/internal/infrastructure/firebaseauth"
 	"github.com/kalKun24/octant-cissp/backend/internal/infrastructure/middleware"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/dto"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/handler"
 	"github.com/kalKun24/octant-cissp/backend/internal/interface/openapi"
+	"github.com/kalKun24/octant-cissp/backend/internal/usecase/auth"
 )
 
 const (
@@ -42,7 +43,26 @@ const (
 	// 転送するため、サーバ側が /api を含むパスで待ち受ける必要がある。
 	// ローカルの Vite proxy も同じくプレフィックスを剥がさない。
 	apiBasePath = "/api"
+
+	// verifierInitTimeout は Firebase Admin SDK の初期化に許す上限。
+	// 資格情報の取得でメタデータサーバへ問い合わせるため、無期限に待たせない。
+	verifierInitTimeout = 15 * time.Second
 )
+
+// publicRouteEntries は**認証を免除するルート**の全集合。
+//
+// 形式は "METHOD /route/pattern"。api/openapi.yaml で `security: []` を
+// 書いたオペレーションと1対1で対応させること。
+//
+// **ここに書かれていないルートはすべて認証必須になる**（fail-closed）。
+// 新しいエンドポイントを足しても、この一覧を触らない限り無認証にはならない。
+// 逆にここへ1行足すことは「認証を外す」という明示的な変更であり、
+// cmd/server の TestNonPublicRoutesRequireAuth がその影響範囲を検証する。
+var publicRouteEntries = []string{
+	// 死活監視。Cloud Run と GCP ロードバランサが認証情報を持たずに叩く。
+	"GET /api/health",
+	"HEAD /api/health",
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -67,9 +87,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	authenticator, err := newAuthenticator(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("認証の初期化に失敗しました: %w", err)
+	}
+
+	router, err := newRouter(logger, cfg, authenticator, publicRouteEntries)
+	if err != nil {
+		return fmt.Errorf("ルータの組み立てに失敗しました: %w", err)
+	}
+
+	logStartupPolicy(ctx, logger, cfg)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           newRouter(logger, cfg),
+		Handler:           router,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -163,15 +195,66 @@ func cloudSeverity(level slog.Level) string {
 	}
 }
 
+// newAuthenticator は ID トークンの検証器と許可メールの照合を束ねる。
+func newAuthenticator(ctx context.Context, cfg *config.Config) (*auth.Authenticator, error) {
+	initCtx, cancel := context.WithTimeout(ctx, verifierInitTimeout)
+	defer cancel()
+
+	verifier, err := firebaseauth.NewVerifier(initCtx, cfg.FirebaseProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("ID トークン検証器の生成に失敗しました: %w", err)
+	}
+
+	return auth.NewAuthenticator(verifier, cfg.AllowedEmails), nil
+}
+
+// logStartupPolicy は起動時に有効な認証まわりの設定を記録する。
+// **許可メールそのものは出さない**（件数だけを出す）。
+func logStartupPolicy(ctx context.Context, logger *slog.Logger, cfg *config.Config) {
+	logger.LogAttrs(ctx, slog.LevelInfo, "認証設定を読み込みました",
+		slog.String("firebase_project_id", cfg.FirebaseProjectID),
+		slog.Int("allowed_emails", cfg.AllowedEmails.Size()),
+		slog.Int("public_routes", len(publicRouteEntries)),
+	)
+
+	if config.UsesAuthEmulator() {
+		// 署名検証が省略される構成であることを運用者に見せる。
+		// config.Load が local 以外でこの構成を弾いているため、ここに来るのは local だけ。
+		logger.LogAttrs(ctx, slog.LevelWarn,
+			"Firebase Auth エミュレータに接続します。ID トークンの署名は検証されません")
+	}
+}
+
 // newRouter はルータを組み立てる。ミドルウェアは外側から順に適用される。
 //
-// RequestID → RequestLogger → Recovery の順にしているのは、
+// SecurityHeaders → RequestID → RequestLogger → Recovery の順にしているのは、
+// 404 / 405 / パニック時の 500 にもセキュリティヘッダとアクセスログを残したいため。
 // RequestLogger が trace_id を読めるように RequestID を先に置き、
-// panic 時も 500 として1行のアクセスログが残るように Recovery を内側に置くため。
-func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
+// panic 時も 500 として1行のアクセスログが残るように Recovery を内側に置く。
+//
+// **認証ミドルウェアだけはここに置かない。** 生成コードの Middlewares へ渡し、
+// ルート照合の後に走らせる（免除判定に chi の RoutePattern が要るため。
+// 詳細は middleware.PublicRoutes のコメント）。
+//
+// publicEntries を引数で受けるのは、テストが**免除リストを空にしたルータ**を
+// 組み立てられるようにするため。免除が効いていない状態で /api/health が
+// 401 になることを固定でき、免除の分岐が実際に働いていることを検証できる。
+// 本番の値は publicRouteEntries 1箇所だけ。
+func newRouter(
+	logger *slog.Logger,
+	cfg *config.Config,
+	authenticator middleware.Authenticator,
+	publicEntries []string,
+) (http.Handler, error) {
+	public, err := middleware.NewPublicRoutes(publicEntries...)
+	if err != nil {
+		return nil, fmt.Errorf("認証免除ルートの定義が不正です: %w", err)
+	}
+
 	r := chi.NewRouter()
 
-	r.Use(chimw.RequestID)
+	r.Use(middleware.SecurityHeaders)
+	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(logger))
 	r.Use(middleware.Recovery(logger))
 
@@ -190,12 +273,15 @@ func newRouter(logger *slog.Logger, cfg *config.Config) http.Handler {
 	// 明示しているパスだけに生成される（chi は GET から HEAD を自動生成しない）。
 	srv := handler.NewServer(handler.NewHealth(cfg.Revision))
 	openapi.HandlerWithOptions(srv, openapi.ChiServerOptions{
-		BaseURL:          apiBasePath,
-		BaseRouter:       r,
+		BaseURL:    apiBasePath,
+		BaseRouter: r,
+		// 生成コードは登録した全ハンドラにこのミドルウェアを通す。
+		// openapi.yaml にオペレーションを足すと自動的に認証の対象になる。
+		Middlewares:      []openapi.MiddlewareFunc{middleware.Auth(logger, authenticator, public)},
 		ErrorHandlerFunc: parameterErrorHandler(logger),
 	})
 
-	return r
+	return r, nil
 }
 
 // parameterErrorHandler は生成コードがパラメータの解釈に失敗したときの応答を作る。

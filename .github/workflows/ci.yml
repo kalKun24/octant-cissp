@@ -77,5 +77,15 @@ jobs:
       - name: backend のテスト
         run: make test
 
+      # 認証ミドルウェアはこのプロジェクトの防壁そのものなので、
+      # エミュレータを立てて実挙動を毎 PR で検証する。
+      # 現在は Auth エミュレータだけを使うため Java は不要。
+      # Firestore エミュレータを足す際（TICKET-006）は JRE のセットアップが要る。
+      - name: firebase-tools を導入
+        run: npm install -g firebase-tools@15
+
+      - name: backend の統合テスト（Auth エミュレータ）
+        run: make test-integration
+
       - name: frontend のテスト
         run: make test-front
